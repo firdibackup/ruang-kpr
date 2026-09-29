@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CircleCheckIcon, CircleIcon, FileTextIcon } from 'lucide-react'
+import { CircleCheckIcon, CircleIcon } from 'lucide-react'
 import { Tabs as TabsPrimitive } from 'radix-ui'
 import { api } from '@/data/api'
 import { useResource } from '@/lib/hooks'
@@ -71,7 +71,18 @@ export function MyKprResolver() {
         </Panel>
       ) : (
         <EmptyState
-          icon={FileTextIcon}
+          media={
+            // The drawing sits on #FEFEFE with ground cut at the sides: brightness lifts it to card white,
+            // the mask fades the cut, and the negative margins absorb its built-in whitespace.
+            <img
+              src="/no-kpr-page.webp"
+              alt=""
+              width={1448}
+              height={1086}
+              decoding="async"
+              className="-mt-4 -mb-3 h-auto w-full max-w-[340px] brightness-[1.02] [mask-image:linear-gradient(90deg,transparent,#000_10%,#000_90%,transparent)] sm:max-w-[380px]"
+            />
+          }
           title="Belum ada KPR atau pengajuan"
           action={
             <div className="flex flex-wrap justify-center gap-3">
@@ -116,7 +127,7 @@ export function MyKprLayout() {
       <PageHeader title="KPR Saya" subtitle={`${m.bankName} · KPR ${m.scheme === 'sharia' ? 'Syariah' : 'Konvensional'}`} />
       {hasApp && <KprSwitch current="mortgage" />}
       <TabsPrimitive.Root value={tab} onValueChange={(v) => navigate(`/my-kpr/${v}`)} className="flex flex-col gap-5">
-        <TabsPrimitive.List aria-label="Detail KPR" className="flex w-full max-w-full gap-1 self-start overflow-x-auto rounded-full border border-border bg-card p-1 sm:w-fit">
+        <TabsPrimitive.List aria-label="Detail KPR" className="relative flex w-full max-w-full gap-1 self-start overflow-x-auto rounded-full border border-border bg-card p-1 sm:w-fit">
           {TABS.map(([k, label]) => (
             <TabsPrimitive.Trigger key={k} value={k} className="h-11 shrink-0 rounded-full px-[22px] text-sm font-bold text-ink-3 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 data-[state=active]:bg-primary data-[state=active]:text-white">
               {label}

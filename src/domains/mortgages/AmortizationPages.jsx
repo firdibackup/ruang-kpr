@@ -214,7 +214,7 @@ export function AmortizationSchedulePage() {
           </div>
           <span className="text-[13px] text-muted-foreground">Sumber: KPR aktif · sisa pokok</span>
         </div>
-        <div className="overflow-x-auto rounded-2xl border border-border" tabIndex={0} role="region" aria-label="Tabel jadwal amortisasi (dapat digeser)">
+        <div className="relative overflow-x-auto rounded-2xl border border-border" tabIndex={0} role="region" aria-label="Tabel jadwal amortisasi (dapat digeser)">
           <table className="w-full min-w-[860px] border-collapse text-[13px] tabular">
             <caption className="sr-only">Jadwal amortisasi {view === 'bulanan' ? `bulanan tahun ${year}` : 'tahunan'}. Tanda * = bunga estimasi.</caption>
             <thead className="bg-muted text-xs font-extrabold text-ink-3">

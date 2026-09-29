@@ -112,4 +112,16 @@ test.describe('mobile', () => {
       expect(overflow, `horizontal overflow on ${label}`).toBeLessThanOrEqual(0)
     }
   })
+
+  // Status steppers scroll sideways; their sr-only labels must not widen the page.
+  test('status steppers do not overflow the page', async ({ page }) => {
+    for (const scenario of ['application_in_process', 'takeover_in_process']) {
+      for (const path of ['/', '/my-kpr/application']) {
+        await useScenario(page, scenario, path)
+        await expect(page.getByRole('list', { name: /Tahapan pengajuan|Status pengajuan/ }).first()).toBeVisible()
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+        expect(overflow, `horizontal overflow on ${scenario} ${path}`).toBeLessThanOrEqual(0)
+      }
+    }
+  })
 })

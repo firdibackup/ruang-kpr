@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import { ActivityIcon, ArrowLeftIcon, BellIcon, CompassIcon, HouseIcon, LandmarkIcon, UserRoundIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/data/api'
@@ -119,6 +119,7 @@ export function PageHeader({ title, subtitle, back, crumb, actions }) {
   const navigate = useNavigate()
   const { session } = useSession()
   const name = session?.user?.name
+  const unread = useOutletContext()?.unread ?? 0
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex min-w-0 flex-[1_1_320px] items-center gap-3.5">
@@ -135,8 +136,9 @@ export function PageHeader({ title, subtitle, back, crumb, actions }) {
       </div>
       <div className="flex items-center gap-3">
         {actions}
-        <NavLink to="/activity" aria-label="Notifikasi" className="hidden size-11 items-center justify-center rounded-xl border border-border bg-card hover:bg-muted lg:flex">
+        <NavLink to="/activity" aria-label={`Notifikasi${unread ? `, ${unread} belum dibaca` : ''}`} className="relative hidden size-11 items-center justify-center rounded-xl border border-border bg-card hover:bg-muted lg:flex">
           <BellIcon className="size-5" aria-hidden />
+          {unread > 0 && <span className="absolute top-2 right-2 size-2.5 rounded-full bg-brand-red" />}
         </NavLink>
         <NavLink to="/profile" className="hidden items-center gap-2.5 rounded-full border border-border bg-card py-1.5 pr-3.5 pl-1.5 hover:bg-muted lg:flex">
           <span className="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-white" aria-hidden>

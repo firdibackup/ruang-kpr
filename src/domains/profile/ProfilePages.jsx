@@ -47,9 +47,9 @@ export function ProfilePage() {
               rows={[
                 { k: 'No. HP', v: p.phone || 'Belum diisi', tone: p.phone ? undefined : 'mute' },
                 { k: 'Email', v: p.email || 'Belum diisi', tone: p.email ? undefined : 'mute' },
-                { k: 'NIK', v: maskNik(p.nik) },
+                { k: 'NIK', v: p.nik ? maskNik(p.nik) : 'Belum diisi' },
                 { k: 'Tanggal lahir', v: p.birthDate ? dateLong(p.birthDate) : 'Belum diisi', tone: p.birthDate ? undefined : 'mute' },
-                { k: 'Status', v: labelOf(MARITAL, p.maritalStatus) },
+                { k: 'Status', v: p.maritalStatus ? labelOf(MARITAL, p.maritalStatus) : 'Belum diisi' },
               ]}
             />
             <Button variant="outline" size="md" className="mt-3 w-fit" onClick={() => navigate('/profile/edit')}>
@@ -64,7 +64,7 @@ export function ProfilePage() {
             </div>
             <SummaryRows
               rows={[
-                { k: 'Pekerjaan', v: labelOf(OCCUPATIONS, p.occupation) },
+                { k: 'Pekerjaan', v: p.occupation ? labelOf(OCCUPATIONS, p.occupation) : 'Belum diisi' },
                 { k: 'Perusahaan', v: p.companyName || 'Belum diisi', tone: p.companyName ? undefined : 'mute' },
                 { k: 'Penghasilan bulanan', v: f.monthlyIncome ? rupiah(f.monthlyIncome) : 'Belum diisi', tone: f.monthlyIncome ? undefined : 'mute' },
               ]}

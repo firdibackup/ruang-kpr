@@ -24,7 +24,7 @@ const ELIGIBILITY = {
 
 function CapacityHero({ capacity, income, debts }) {
   return (
-    <HeroCard className="flex-row flex-wrap items-center gap-4 p-6 sm:p-6">
+    <HeroCard scenery={false} className="flex-row flex-wrap items-center gap-4 p-6 sm:p-6">
       <IconBox icon={LightbulbIcon} tone="glass" size="xl" />
       <div className="flex min-w-[220px] flex-1 flex-col gap-1">
         <span className="text-[13px] font-semibold text-white/80">Kapasitas cicilan kamu</span>

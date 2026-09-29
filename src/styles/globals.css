@@ -98,6 +98,9 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+  }
   input[type="range"] {
     accent-color: var(--primary);
   }
@@ -109,6 +112,15 @@
 
 @utility hero-gradient {
   background: linear-gradient(-104.5deg, #00266be6 8.6%, #0a57d0e6 91.4%), #003da5;
+}
+
+/* Street skyline ghosted into the hero's right corner. Luminosity keeps the gradient's hue; the mask fades
+   the left edge, the sky (top ~35% of the image) and the road (bottom ~30%) so no light rectangle shows. */
+@utility hero-scenery {
+  mask-image: linear-gradient(to left, #000 45%, transparent), linear-gradient(to top, transparent, #000 30% 65%, transparent);
+  mask-composite: intersect;
+  mix-blend-mode: luminosity;
+  opacity: 0.22;
 }
 
 @utility tabular {

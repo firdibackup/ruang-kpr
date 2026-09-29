@@ -77,7 +77,7 @@ export function WizardProgress({ label, steps, current, saving, savedLabel = 'Te
 // Horizontal status stepper (artifact C11). step.state: done | current | rejected | todo
 export function StatusStepper({ steps, label = 'Tahapan pengajuan' }) {
   return (
-    <ol aria-label={label} className="flex overflow-x-auto pb-1">
+    <ol aria-label={label} className="relative flex overflow-x-auto pb-1">
       {steps.map((s, i) => {
         const next = steps[i + 1]
         return (

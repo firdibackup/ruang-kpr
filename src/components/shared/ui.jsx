@@ -3,6 +3,7 @@ import { Progress as ProgressPrimitive } from 'radix-ui'
 import { CircleAlertIcon, CircleCheckIcon, CloudOffIcon, InfoIcon, LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { EMPTY } from '@/lib/format'
 
 export function Panel({ as: Comp = 'section', className, children, ...props }) {
   return (
@@ -66,7 +67,7 @@ export function EstimateTag({ children = 'estimasi', className }) {
 export function SummaryRows({ rows, className, size = 'md' }) {
   return (
     <dl className={cn('flex flex-col', className)}>
-      {rows.filter(Boolean).map((r) => (
+      {rows.filter(Boolean).map((r) => ({ ...r, tone: r.tone ?? (r.v === EMPTY || r.v === 'Belum diisi' ? 'mute' : undefined) })).map((r) => (
         <div key={r.k} className={cn('flex items-baseline justify-between gap-4 border-b border-line last:border-b-0', size === 'sm' ? 'py-2.5 text-[13px]' : 'py-3 text-sm')}>
           <dt className="flex min-w-0 items-center gap-2 text-ink-3">
             {r.k}
@@ -111,8 +112,26 @@ export function Notice({ tone = 'info', icon, title, children, action, className
   )
 }
 
-export function HeroCard({ className, children }) {
-  return <section className={cn('flex flex-col gap-4 rounded-card p-6 text-white shadow-card hero-gradient sm:p-[30px]', className)}>{children}</section>
+// scenery: 'bottom' crops the road below the card edge; 'top' lifts the street into the corner when content fills the lower half.
+export function HeroCard({ className, children, scenery = 'bottom' }) {
+  return (
+    <section className={cn('relative isolate flex flex-col gap-4 overflow-hidden rounded-card p-6 text-white shadow-card hero-gradient sm:p-[30px]', className)}>
+      {scenery && (
+        <img
+          src="/card-overview.webp"
+          alt=""
+          width={1672}
+          height={941}
+          decoding="async"
+          className={cn(
+            'pointer-events-none absolute right-0 -z-10 w-[min(640px,95%)] select-none hero-scenery',
+            scenery === 'top' ? 'top-0 -translate-y-[25%]' : 'bottom-0 translate-y-[28%]',
+          )}
+        />
+      )}
+      {children}
+    </section>
+  )
 }
 
 export function BankMark({ mark, size = 'md', tone = 'primary' }) {
@@ -196,10 +215,11 @@ export function ErrorPanel({ title = 'Data gagal dimuat.', message = 'Koneksi be
   )
 }
 
-export function EmptyState({ icon: Icon, title, children, action, className }) {
+export function EmptyState({ icon: Icon, media, title, children, action, className }) {
   return (
     <div className={cn('flex flex-col items-center gap-3.5 rounded-card bg-card px-6 py-12 text-center shadow-card', className)}>
-      {Icon && (
+      {media}
+      {Icon && !media && (
         <span className="flex size-[72px] items-center justify-center rounded-full bg-secondary text-primary">
           <Icon className="size-[30px]" aria-hidden />
         </span>

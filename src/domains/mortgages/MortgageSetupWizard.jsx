@@ -88,7 +88,7 @@ function SetupLayout({ children, aside, footer, onSubmit }) {
     <form onSubmit={onSubmit} noValidate className="flex flex-wrap items-start gap-6">
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7 rounded-card bg-card p-5 shadow-card sm:p-7">
         {children}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">{footer}</div>
+        <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">{footer}</div>
       </div>
       <aside className="flex flex-[1_1_280px] flex-col gap-4 lg:sticky lg:top-6">
         {aside}
@@ -119,7 +119,7 @@ function Footer({ editing, backTo, navigate, saving, label, disabled, extra }) {
       <Button variant="neutral" onClick={() => navigate(backTo)}>
         {editing ? 'Batal' : 'Kembali'}
       </Button>
-      <div className="flex flex-wrap items-center gap-[18px]">
+      <div className="flex flex-col-reverse gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-[18px]">
         {extra}
         <Button type="submit" disabled={saving} aria-busy={saving} className={disabled ? 'bg-border text-ink-3 hover:bg-border' : ''}>
           {saving && <Spinner />}

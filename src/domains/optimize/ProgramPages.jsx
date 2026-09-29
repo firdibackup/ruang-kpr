@@ -318,7 +318,7 @@ function ProgramDetail({ sim, item }) {
       <Header sim={sim} title={`${x.bank.name} · ${x.name}`} subtitle="Detail program & simulasi" back="/optimize/programs" />
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-5">
-          <Panel className="gap-0 overflow-x-auto px-6 py-6 sm:px-7">
+          <Panel className="relative gap-0 overflow-x-auto px-6 py-6 sm:px-7">
             <table className="w-full min-w-[480px] text-sm">
               <caption className="sr-only">Perbandingan KPR lama dan program baru</caption>
               <thead>

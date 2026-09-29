@@ -6,7 +6,7 @@ import { percentRatio, rupiah } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Chip, Disclaimer, ErrorPanel, Panel, PageSkeleton, ProgressBar } from '@/components/shared/ui'
-import { HealthRing } from '@/domains/home/MonitoringDashboard'
+import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/MonitoringDashboard'
 import { deriveMortgage } from './derive'
 
 const BAR = { ok: 'bg-success-strong', warn: 'bg-warning-accent', bad: 'bg-brand-red' }
@@ -20,6 +20,7 @@ export function HealthPage() {
   if (!m) return <Navigate to="/my-kpr" replace />
   const d = deriveMortgage(m, data.clock)
   const h = d.health
+  const weakest = h.components.filter((c) => c.score !== null).sort((a, b) => a.score - b.score)[0]
   const evidence = {
     dti: d.dti ? `Rasio cicilan ${percentRatio(d.dti.dtiRatio)} dari penghasilan` : 'Penghasilan belum diisi',
     ltv: d.property ? `LTV ${percentRatio(d.property.ltvRatio)} (sisa pokok ÷ estimasi nilai rumah)` : 'Nilai properti belum diisi',
@@ -40,9 +41,9 @@ export function HealthPage() {
         <Panel className="gap-1.5 sm:p-7">
           <div className="mb-2.5 flex items-center gap-4">
             <HealthRing health={h} size={96} />
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[34px] leading-none font-extrabold">{h.score}/100</span>
+            <div className="flex min-w-0 flex-col items-start gap-2">
               <Chip tone={h.tone}>{h.label}</Chip>
+              <p className="text-[15px] leading-[22px] font-semibold text-ink-2">{h.score >= 80 ? 'Kondisi KPR kamu sehat.' : HEALTH_SENTENCE[weakest?.key]}</p>
             </div>
           </div>
           <ul className="flex flex-col">

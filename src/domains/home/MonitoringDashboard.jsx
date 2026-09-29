@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { FormDialog } from '@/components/shared/dialogs'
 import { Chip, Disclaimer, EstimateTag, HeroCard, IconBox, Notice, Panel, ProgressBar, Skeleton, SummaryRows } from '@/components/shared/ui'
 
-const HEALTH_SENTENCE = {
+export const HEALTH_SENTENCE = {
   dti: 'Rasio cicilan kamu agak tinggi.',
   ltv: 'Porsi pinjaman terhadap nilai rumah masih tinggi.',
   rate: 'Masa fixed segera berakhir.',

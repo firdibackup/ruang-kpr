@@ -186,12 +186,12 @@ export function DocumentsStep({ app, onChange, fromReview, go, nextPath = '/appl
           ))}
         </div>
       </Panel>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button variant="neutral" onClick={() => go(fromReview ? '/apply/primary/7' : backPath)}>
           Kembali
         </Button>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {!complete && <span className="text-xs text-muted-foreground">Upload semua dokumen wajib untuk lanjut.</span>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
+          {!complete && <span className="text-center text-xs text-muted-foreground">Upload semua dokumen wajib untuk lanjut.</span>}
           <Button onClick={next} aria-disabled={!complete} aria-busy={saving} className={!complete ? 'bg-border text-ink-3 hover:bg-border' : ''}>
             {saving && <Spinner />}
             {fromReview ? 'Simpan & kembali ke Review' : 'Lanjutkan'}

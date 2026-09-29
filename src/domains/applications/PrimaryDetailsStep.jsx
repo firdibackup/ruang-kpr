@@ -244,12 +244,12 @@ export function PrimaryDetailsStep({ step, app, snapshot, onCreated, onSaved, fr
       </Panel>
 
       {apiError && <Notice tone="bad" role="alert" title="Belum tersimpan">{apiError} Data yang kamu isi tetap ada.</Notice>}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button variant="neutral" onClick={() => go(fromReview ? '/apply/primary/7' : step === 1 ? '/' : `/apply/primary/${step - 1}`)}>
           Kembali
         </Button>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {form.hasErrors && <span className="text-xs text-muted-foreground">Lengkapi semua field wajib untuk lanjut.</span>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
+          {form.hasErrors && <span className="text-center text-xs text-muted-foreground">Lengkapi semua field wajib untuk lanjut.</span>}
           <Button type="submit" disabled={saving} aria-busy={saving} className={form.hasErrors ? 'bg-border text-ink-3 hover:bg-border' : ''}>
             {saving && <Spinner />}
             {saving ? 'Menyimpan…' : backToReview ? 'Simpan & kembali ke Review' : 'Simpan & Lanjutkan'}
