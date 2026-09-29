@@ -1,0 +1,625 @@
+import { useCallback, useState } from 'react'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { BriefcaseIcon, CalculatorIcon, CreditCardIcon, GaugeIcon, GitBranchIcon, HandCoinsIcon, HouseIcon, IdCardIcon, InfoIcon, LandmarkIcon, ListOrderedIcon, LockIcon, TargetIcon, UserRoundIcon, WalletIcon } from 'lucide-react'
+import { api } from '@/data/api'
+import { calculateTopupScenario } from '@/calculations/finance'
+import { useForm } from '@/lib/hooks'
+import { BANKS, CERTIFICATES, CITIES, GENDERS, GOALS, MARITAL, OCCUPATIONS, PROPERTY_TYPES, PURPOSES, intInput, labelOf, moneyInput, percentBps, percentRatio, rupiah, tenorLabel, toInt, toMoney } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, ReadonlyField, SelectField, TextAreaField, TextField } from '@/components/shared/fields'
+import { ConfirmDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { UploadRow } from '@/components/shared/UploadRow'
+import { Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, ProgressBar, Spinner } from '@/components/shared/ui'
+import { toEmployment, toPersonal, validatePersonal } from '@/domains/applications/validation'
+import { Aside, OptimizeHeader, modeName, useOptimize } from './shared'
+import { validateCapacity, validateEmploymentBasic, validateGoal, validateOldLoanBase, validateTakeoverProperty } from './validation'
+
+const TENOR_OPTIONS = [5, 10, 15, 20, 25].map((y) => ({ value: String(y * 12), label: `${y} tahun` }))
+const YES_NO_CHANGED = [
+  { value: 'no', label: 'Tidak' },
+  { value: 'yes', label: 'Ya' },
+]
+
+export function OptimizeStepPage() {
+  const { step } = useParams()
+  const n = Number(step)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const opt = useOptimize()
+  const { snap, app, error, reload, setApp } = opt
+  if (!(n >= 1 && n <= 7)) return <Navigate to="/optimize/intro" replace />
+  if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
+  if (!app) return <Navigate to="/optimize/intro" replace />
+  if (app.status !== 'draft') return <Navigate to="/my-kpr/application" replace />
+  if (n >= 6 && !app.selection) return <Navigate to="/optimize/baseline" replace />
+  if (n > app.currentStep) return <Navigate to={app.currentStep >= 6 && !app.selection ? '/optimize/baseline' : `/optimize/${app.currentStep}`} replace />
+
+  const fromReview = location.state?.from === 'review'
+  const next = (to) => navigate(fromReview && n !== 2 ? '/optimize/7' : to)
+  const props = { app, clock: snap.clock, setApp, next, navigate, fromReview }
+  const PN = modeName(app.optimizationMode)
+  const back = { 1: '/optimize/intro', 2: '/optimize/1', 3: app.data.oldLoan?.source === 'estimate' ? '/optimize/2/estimasi' : '/optimize/2/resmi', 4: '/optimize/3', 5: '/optimize/4', 6: '/optimize/programs', 7: '/optimize/6' }[n]
+
+  return (
+    <>
+      <OptimizeHeader n={n} title={`Pengajuan ${PN}`} subtitle={`Step ${n}/7`} back={fromReview ? '/optimize/7' : back} />
+      {n === 1 && <ProfileStep {...props} />}
+      {n === 2 && <OldLoanStep {...props} />}
+      {n === 3 && <GoalStep {...props} />}
+      {n === 4 && <PropertyStep {...props} />}
+      {n === 5 && <CapacityStep {...props} />}
+      {n === 6 && <TakeoverDocsStep {...props} />}
+      {n === 7 && <TakeoverReview {...props} />}
+    </>
+  )
+}
+
+function FormLayout({ children, aside, onSubmit, cta, saving, onDemo }) {
+  return (
+    <form onSubmit={onSubmit} noValidate className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex min-w-0 flex-col gap-5">
+        {children}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {import.meta.env.DEV && onDemo ? (
+            <button type="button" onClick={onDemo} className="text-[13px] font-bold text-primary underline">
+              Isi contoh data
+            </button>
+          ) : (
+            <span />
+          )}
+          <Button type="submit" disabled={saving} aria-busy={saving}>
+            {saving && <Spinner />}
+            {saving ? 'Menyimpan…' : cta}
+          </Button>
+        </div>
+      </div>
+      {aside}
+    </form>
+  )
+}
+
+function Group({ icon, title, desc, children }) {
+  return (
+    <Panel as="fieldset" className="gap-5 sm:p-7">
+      <legend className="contents">
+        <span className="flex items-start gap-3">
+          <IconBox icon={icon} />
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="text-lg font-extrabold">{title}</span>
+            {desc && <span className="text-[13px] leading-5 font-normal text-ink-3">{desc}</span>}
+          </span>
+        </span>
+      </legend>
+      {children}
+    </Panel>
+  )
+}
+
+function useStepSave(app, step, setApp) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const save = async (values) => {
+    setSaving(true)
+    setError('')
+    try {
+      const saved = await api.applications.saveStep(app.id, { step, values })
+      setApp(saved)
+      toast('Tersimpan.')
+      return saved
+    } catch (e) {
+      setError(e.message)
+      return null
+    } finally {
+      setSaving(false)
+    }
+  }
+  return { saving, error, save }
+}
+
+// ---------- Step 1 ----------
+function ProfileStep({ app, clock, setApp, next, fromReview }) {
+  const p = app.data.personal ?? {}
+  const e = app.data.employment ?? {}
+  const validate = useCallback((v) => ({ ...validatePersonal(v, { today: clock }), ...validateEmploymentBasic(v) }), [clock])
+  const form = useForm(
+    {
+      fullName: p.fullName ?? '', nik: p.nik ?? '', birthPlace: p.birthPlace ?? '', birthDate: p.birthDate ?? '', gender: p.gender ?? '', maritalStatus: p.maritalStatus ?? '', address: p.address ?? '', phone: p.phone ?? '', email: p.email ?? '',
+      occupation: e.occupation ?? '', companyName: e.companyName ?? '', jobTitle: e.jobTitle ?? '', workYears: intInput(e.workYears), workMonths: intInput(e.workMonths), monthlyIncome: moneyInput(e.monthlyIncome), jointIncome: e.jointIncome ?? false, partnerIncome: moneyInput(e.partnerIncome),
+    },
+    validate,
+  )
+  const { saving, error, save } = useStepSave(app, 1, setApp)
+  const v = form.values
+  const onSubmit = form.submit(async (x) => {
+    const { vehicleDebt: _a, cardDebt: _b, otherDebt: _c, ...employment } = toEmployment({ ...x, vehicleDebt: '0', cardDebt: '0', otherDebt: '0' })
+    if (await save({ personal: toPersonal(x), employment })) {
+      form.markClean()
+      next('/optimize/2')
+    }
+  })
+  const demo = () => form.setValues({ ...v, fullName: 'Firdi Audi', nik: '3174012345678901', birthPlace: 'Bekasi', birthDate: '1994-08-12', gender: 'male', maritalStatus: 'single', address: 'Jl. Melati No. 12, Bekasi Selatan', phone: '081234567890', email: 'firdi.audi@email.com', occupation: 'private_employee', companyName: 'PT Nusantara Digital', jobTitle: 'Software Engineer', workYears: '4', workMonths: '6', monthlyIncome: '15000000' })
+  return (
+    <FormLayout onSubmit={onSubmit} saving={saving} cta={fromReview ? 'Simpan & kembali ke Review' : 'Simpan & Lanjutkan'} onDemo={demo} aside={<Aside icon={LockIcon} title="Data kamu aman" note="Data tidak dikirim ke bank sebelum kamu memilih satu program, memberi persetujuan, dan menekan Submit." />}>
+      <UnsavedChangesGuard when={form.dirty && !saving} />
+      <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
+      {(p.fullName || e.companyName) && <Notice tone="info">Data dari profil kamu sudah terisi. Periksa dan ubah bila perlu.</Notice>}
+      <Group icon={UserRoundIcon} title="Data pribadi" desc="Sesuai KTP. Disimpan di profil agar tidak perlu diisi ulang.">
+        <FormGrid>
+          <TextField label="Nama sesuai KTP" span {...form.bind('fullName')} />
+          <TextField label="NIK" placeholder="16 digit angka" inputMode="numeric" maxLength={16} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
+          <TextField label="Tempat lahir" placeholder="Bekasi" {...form.bind('birthPlace')} />
+          <DateField label="Tanggal lahir" max={clock} {...form.bind('birthDate')} />
+          <RadioCards label="Jenis kelamin" options={GENDERS} {...form.bind('gender')} />
+          <TextAreaField label="Alamat KTP" span placeholder="Jl. Melati No. 12, Bekasi" {...form.bind('address')} />
+          <SelectField label="Status perkawinan" options={MARITAL} {...form.bind('maritalStatus')} />
+          <TextField label="Nomor ponsel" inputMode="tel" {...form.bind('phone')} />
+          <TextField label="Email" type="email" span {...form.bind('email')} />
+        </FormGrid>
+      </Group>
+      <Group icon={BriefcaseIcon} title="Pekerjaan & penghasilan">
+        <FormGrid>
+          <SelectField label="Jenis pekerjaan" options={OCCUPATIONS} span {...form.bind('occupation')} />
+          <TextField label="Nama perusahaan / usaha" {...form.bind('companyName')} />
+          <TextField label="Jabatan / bidang usaha" {...form.bind('jobTitle')} />
+          <NumberField label="Lama bekerja" suffix="tahun" {...form.bind('workYears')} />
+          <NumberField label="Tambahan bulan" suffix="bulan" {...form.bind('workMonths')} />
+          <MoneyField label="Penghasilan bulanan (gross)" span {...form.bind('monthlyIncome')} />
+          <CheckboxField label="Gabungkan pendapatan pasangan" span checked={v.jointIncome} onChange={(x) => form.setValues({ ...v, jointIncome: x, partnerIncome: x ? v.partnerIncome : '' })} />
+          {v.jointIncome && <MoneyField label="Penghasilan pasangan" span {...form.bind('partnerIncome')} />}
+        </FormGrid>
+      </Group>
+      {error && <Notice tone="bad" role="alert">{error}</Notice>}
+    </FormLayout>
+  )
+}
+
+// ---------- Step 2 (base) ----------
+function OldLoanStep({ app, clock, setApp, navigate }) {
+  const o = app.data.oldLoan ?? {}
+  const validate = useCallback((v) => validateOldLoanBase(v, { today: clock }), [clock])
+  const known = BANKS.some((b) => b.value === o.bankName)
+  const form = useForm(
+    {
+      bankName: !o.bankName ? '' : known ? o.bankName : 'Bank lainnya',
+      productName: o.productName ?? '',
+      originalPrincipal: moneyInput(o.originalPrincipal),
+      currentPayment: moneyInput(o.currentPayment),
+      originalTenorMonths: intInput(o.originalTenorMonths),
+      startDate: o.startDate ?? '',
+      dueDay: intInput(o.dueDay),
+      paymentEverChanged: o.paymentEverChanged == null ? '' : o.paymentEverChanged ? 'yes' : 'no',
+    },
+    validate,
+  )
+  // Saved as sub-step 1 so the draft stays on step 2 until official/estimated figures are confirmed.
+  const { saving, error, save } = useStepSave(app, 1, setApp)
+  const onSubmit = form.submit(async (x) => {
+    const saved = await save({
+      oldLoan: {
+        bankName: x.bankName,
+        productName: x.productName.trim() || null,
+        originalPrincipal: toMoney(x.originalPrincipal),
+        currentPayment: toMoney(x.currentPayment),
+        originalTenorMonths: toInt(x.originalTenorMonths),
+        startDate: x.startDate,
+        dueDay: toInt(x.dueDay),
+        paymentEverChanged: x.paymentEverChanged === 'yes',
+      },
+    })
+    if (saved) {
+      form.markClean()
+      navigate(x.paymentEverChanged === 'yes' ? '/optimize/2/resmi' : '/optimize/2/estimasi')
+    }
+  })
+  const demo = () => form.setValues({ bankName: 'Bank ABC', productName: 'KPR Fixed 5 Tahun', originalPrincipal: '500000000', currentPayment: '5000000', originalTenorMonths: '240', startDate: '2021-08-12', dueDay: '12', paymentEverChanged: 'yes' })
+  return (
+    <FormLayout
+      onSubmit={onSubmit}
+      saving={saving}
+      cta="Simpan & Lanjutkan"
+      onDemo={demo}
+      aside={<Aside icon={InfoIcon} title="Kenapa kami tanya ini?" note="Kondisi KPR lama jadi pembanding sebelum melihat bank baru. Jika cicilan pernah berubah, kami minta sisa pokok resmi karena perhitungan satu bunga tidak lagi akurat." />}
+    >
+      <UnsavedChangesGuard when={form.dirty && !saving} />
+      <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
+      <Group icon={LandmarkIcon} title="KPR kamu saat ini" desc="Lihat di aplikasi bank lama, surat akad, atau rekening koran.">
+        <FormGrid>
+          <SelectField label="Bank asal" options={BANKS} {...form.bind('bankName')} />
+          <TextField label="Nama produk" optional placeholder="KPR Fixed 5 Tahun" {...form.bind('productName')} />
+          <MoneyField label="Pinjaman KPR awal" {...form.bind('originalPrincipal')} />
+          <MoneyField label="Cicilan bulanan saat ini" {...form.bind('currentPayment')} />
+          <NumberField label="Tenor awal" suffix="bulan" placeholder="240" {...form.bind('originalTenorMonths')} />
+          <DateField label="Tanggal akad" max={clock} {...form.bind('startDate')} />
+          <NumberField label="Jatuh tempo setiap tanggal" placeholder="12" {...form.bind('dueDay')} />
+          <RadioCards label="Apakah cicilan pernah naik atau berubah?" hint="Cicilan biasanya berubah saat masa fixed selesai dan bunga menjadi floating." options={YES_NO_CHANGED} variant="pill" span {...form.bind('paymentEverChanged')} />
+        </FormGrid>
+      </Group>
+      {error && <Notice tone="bad" role="alert">{error}</Notice>}
+    </FormLayout>
+  )
+}
+
+// ---------- Step 3 ----------
+function GoalStep({ app, setApp, next }) {
+  const g = app.data.goal ?? {}
+  const form = useForm(
+    {
+      mode: g.mode ?? app.optimizationMode ?? '',
+      goal: g.goal ?? '',
+      tenorMonths: g.tenorMonths ? String(g.tenorMonths) : '',
+      maxPayment: moneyInput(g.maxPayment),
+      requestedTopup: moneyInput(g.requestedTopup || null),
+      purpose: g.purpose ?? '',
+      purposeOther: g.purposeOther ?? '',
+    },
+    validateGoal,
+  )
+  const [confirmSwitch, setConfirmSwitch] = useState(null)
+  const { saving, error, save } = useStepSave(app, 3, setApp)
+  const v = form.values
+  const setMode = (mode) => {
+    if (v.mode === 'topup' && mode === 'takeover' && (v.requestedTopup || v.purpose)) return setConfirmSwitch(mode)
+    form.setValues({ ...v, mode, tenorMonths: v.tenorMonths || (mode === 'topup' ? '240' : '180') })
+  }
+  const onSubmit = form.submit(async (x) => {
+    const saved = await save({
+      goal: {
+        mode: x.mode,
+        goal: x.mode === 'takeover' ? x.goal : null,
+        tenorMonths: Number(x.tenorMonths),
+        maxPayment: toMoney(x.maxPayment),
+        requestedTopup: x.mode === 'topup' ? toMoney(x.requestedTopup) : 0,
+        purpose: x.mode === 'topup' ? x.purpose : null,
+        purposeOther: x.mode === 'topup' && x.purpose === 'other' ? x.purposeOther.trim() : null,
+      },
+    })
+    if (saved) {
+      form.markClean()
+      next('/optimize/4')
+    }
+  })
+  return (
+    <FormLayout onSubmit={onSubmit} saving={saving} cta="Simpan & Lanjutkan" aside={<Aside icon={GitBranchIcon} title="Dua jalur, satu pengajuan" note="Tanpa dana tambahan: plafon baru sama dengan sisa pokok. Dengan Top-up: plafon baru mencakup sisa pokok, dana tambahan, dan biaya — dibatasi nilai properti × LTV bank." />}>
+      <UnsavedChangesGuard when={form.dirty && !saving} />
+      <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
+      <Group icon={TargetIcon} title="Apa tujuan kamu?" desc="Menentukan jalur perhitungan. Data lain tetap sama.">
+        <RadioCards
+          label="Tujuan pengajuan"
+          layout="column"
+          options={[
+            { value: 'takeover', label: 'Pindah KPR tanpa dana tambahan', description: 'Cari bunga, cicilan, atau tenor baru.' },
+            { value: 'topup', label: 'Pindah KPR + dana tambahan', description: 'Lunasi KPR lama dan terima Top-up.' },
+          ]}
+          {...form.bind('mode')}
+          onChange={setMode}
+        />
+      </Group>
+      {v.mode === 'takeover' && (
+        <Group icon={ListOrderedIcon} title="Prioritas hasil" desc="Dipakai untuk mengurutkan program, bukan jaminan rekomendasi.">
+          <FormGrid>
+            <RadioCards label="Tujuan utama" layout="column" span options={GOALS} {...form.bind('goal')} onChange={(x) => form.setValues({ ...v, goal: x, tenorMonths: x === 'shorter_tenor' && !v.tenorMonths ? '120' : v.tenorMonths })} />
+            <SelectField label="Tenor baru yang diinginkan" options={TENOR_OPTIONS} {...form.bind('tenorMonths')} />
+            <MoneyField label="Batas cicilan nyaman" optional {...form.bind('maxPayment')} />
+          </FormGrid>
+        </Group>
+      )}
+      {v.mode === 'topup' && (
+        <Group icon={HandCoinsIcon} title="Kebutuhan dana" desc="Kebijakan tujuan dana berbeda di tiap bank.">
+          <FormGrid>
+            <MoneyField label="Dana tambahan yang dibutuhkan" span {...form.bind('requestedTopup')} />
+            <SelectField label="Tujuan penggunaan" options={PURPOSES} {...form.bind('purpose')} />
+            <SelectField label="Tenor baru" options={TENOR_OPTIONS} {...form.bind('tenorMonths')} />
+            {v.purpose === 'other' && <TextField label="Jelaskan kebutuhan" span {...form.bind('purposeOther')} />}
+            <MoneyField label="Cicilan maksimal yang nyaman" optional span {...form.bind('maxPayment')} />
+          </FormGrid>
+        </Group>
+      )}
+      {error && <Notice tone="bad" role="alert">{error}</Notice>}
+      <ConfirmDialog
+        open={!!confirmSwitch}
+        onOpenChange={(o) => !o && setConfirmSwitch(null)}
+        destructive={false}
+        title="Ganti ke Take Over tanpa dana tambahan?"
+        body="Jumlah dana tambahan dan tujuan penggunaannya akan dihapus."
+        confirmLabel="Ya, Ganti"
+        onConfirm={async () => form.setValues({ ...v, mode: confirmSwitch, requestedTopup: '', purpose: '', purposeOther: '', tenorMonths: v.tenorMonths || '180' })}
+      />
+    </FormLayout>
+  )
+}
+
+// ---------- Step 4 ----------
+function PropertyStep({ app, setApp, next }) {
+  const p = app.data.property ?? {}
+  const mode = app.optimizationMode
+  const validate = useCallback((v) => validateTakeoverProperty(v, { mode }), [mode])
+  const form = useForm(
+    {
+      propertyType: p.propertyType ?? '',
+      city: p.city ?? '',
+      address: p.address ?? '',
+      landArea: intInput(p.landArea),
+      buildingArea: intInput(p.buildingArea),
+      certificateType: p.certificateType ?? '',
+      certificateOwner: p.certificateOwner ?? app.data.personal?.fullName ?? '',
+      estimatedValue: moneyInput(p.estimatedValue),
+      disputed: p.disputed == null ? '' : p.disputed ? 'yes' : 'no',
+    },
+    validate,
+  )
+  const { saving, error, save } = useStepSave(app, 4, setApp)
+  const v = form.values
+  const out = app.data.oldLoan?.outstanding
+  const value = toMoney(v.estimatedValue)
+  // Conservative 70% LTV reference (per-bank limits are applied later in the program list).
+  const topupRef = mode === 'topup' && value > 0 && out ? calculateTopupScenario({ propertyValue: value, maxLtvBps: 7000, oldOutstanding: out, newLoanAmount: Math.max(out, Math.floor(value * 0.7)), requestedTopup: app.data.goal?.requestedTopup ?? 0 }) : null
+  const onSubmit = form.submit(async (x) => {
+    const saved = await save({
+      property: { propertyType: x.propertyType, city: x.city, address: x.address.trim(), landArea: toInt(x.landArea), buildingArea: toInt(x.buildingArea), certificateType: x.certificateType, certificateOwner: x.certificateOwner.trim(), estimatedValue: toMoney(x.estimatedValue), disputed: x.disputed === 'yes' },
+    })
+    if (saved) {
+      form.markClean()
+      next('/optimize/5')
+    }
+  })
+  const demo = () => form.setValues({ propertyType: 'landed_house', city: 'Kota Bekasi', address: 'Griya Asri Blok C2 No. 8', landArea: '72', buildingArea: '45', certificateType: 'shm', certificateOwner: app.data.personal?.fullName || 'Firdi Audi', estimatedValue: '750000000', disputed: 'no' })
+  const aside =
+    mode === 'topup' ? (
+      <Aside
+        icon={CalculatorIcon}
+        tone="warn"
+        title="Estimasi batas Top-up"
+        rows={
+          topupRef
+            ? [
+                { k: 'Estimasi nilai properti', v: rupiah(value) },
+                { k: 'LTV konservatif', v: '70%' },
+                { k: 'Plafon maksimum', v: rupiah(topupRef.maxLoanByCollateral) },
+                { k: 'Sisa pokok lama', v: `−${rupiah(out)}` },
+                { k: 'Top-up kotor maksimum', v: rupiah(topupRef.maxGrossTopup), tone: 'ok' },
+                { k: 'Kebutuhan kamu', v: rupiah(app.data.goal?.requestedTopup) },
+              ]
+            : []
+        }
+        note={topupRef ? 'Belum termasuk biaya. Masih harus lolos DTI, usia, tenor, pekerjaan, riwayat kredit, legalitas, dan appraisal resmi.' : 'Isi estimasi nilai properti untuk melihat batas Top-up.'}
+      />
+    ) : (
+      <Aside icon={HouseIcon} title="Nilai properti" rows={value > 0 && out ? [{ k: 'Sisa pokok', v: rupiah(out) }, { k: 'LTV saat ini', v: percentRatio(out / value), tone: out / value <= 0.8 ? 'ok' : 'bad' }] : []} note="Dipakai menghitung LTV. Take Over umumnya butuh sisa pokok maksimal 70–80% dari nilai properti. Opsional untuk Take Over, tapi tanpa nilai ini LTV belum dapat dicek." />
+    )
+  return (
+    <FormLayout onSubmit={onSubmit} saving={saving} cta="Simpan & Lanjutkan" onDemo={demo} aside={aside}>
+      <UnsavedChangesGuard when={form.dirty && !saving} />
+      <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
+      <Group icon={HouseIcon} title="Properti yang dijaminkan" desc="Properti yang sedang menjadi jaminan KPR lama.">
+        <FormGrid>
+          <SelectField label="Jenis properti" options={PROPERTY_TYPES} {...form.bind('propertyType')} />
+          <SelectField label="Kota / Kabupaten" options={CITIES} {...form.bind('city')} />
+          <TextField label="Alamat" span placeholder="Griya Asri Blok C2 No. 8" {...form.bind('address')} />
+          <NumberField label="Luas tanah" suffix="m²" optional={v.propertyType === 'apartment'} {...form.bind('landArea')} />
+          <NumberField label="Luas bangunan" suffix="m²" {...form.bind('buildingArea')} />
+          <SelectField label="Status sertifikat" options={CERTIFICATES} {...form.bind('certificateType')} />
+          <TextField label="Nama pemilik sertifikat" {...form.bind('certificateOwner')} />
+          <MoneyField label="Estimasi nilai saat ini" optional={mode !== 'topup'} span hint="Nilai ini bukan appraisal resmi. Bank akan menilai ulang." {...form.bind('estimatedValue')} />
+          <RadioCards label="Sedang bersengketa?" variant="pill" span options={[{ value: 'no', label: 'Tidak' }, { value: 'yes', label: 'Ya' }]} {...form.bind('disputed')} />
+        </FormGrid>
+        {v.disputed === 'yes' && <Notice tone="warn">Simulasi tetap bisa dilanjutkan, tetapi kelayakan perlu pemeriksaan manual oleh bank.</Notice>}
+        {mode !== 'topup' && !value && <Notice tone="muted">Tanpa nilai properti, program akan ditandai “perlu ditinjau” karena LTV belum dapat dicek.</Notice>}
+      </Group>
+      {error && <Notice tone="bad" role="alert">{error}</Notice>}
+    </FormLayout>
+  )
+}
+
+// ---------- Step 5 ----------
+function CapacityStep({ app, setApp, navigate }) {
+  const f = app.data.finance ?? {}
+  const e = app.data.employment ?? {}
+  const topup = app.optimizationMode === 'topup'
+  const form = useForm({ vehicleDebt: moneyInput(f.vehicleDebt), cardDebt: moneyInput(f.cardDebt), otherDebt: moneyInput(f.otherDebt), fundsForCosts: moneyInput(f.fundsForCosts) }, validateCapacity)
+  const { saving, error, save } = useStepSave(app, 5, setApp)
+  const [simError, setSimError] = useState('')
+  const v = form.values
+  const income = (e.monthlyIncome ?? 0) + (e.jointIncome ? e.partnerIncome ?? 0 : 0)
+  const obligations = (app.data.oldLoan?.currentPayment ?? 0) + (toMoney(v.vehicleDebt) ?? 0) + (toMoney(v.cardDebt) ?? 0) + (toMoney(v.otherDebt) ?? 0)
+  const dti = income > 0 ? obligations / income : null
+  const onSubmit = form.submit(async (x) => {
+    setSimError('')
+    const saved = await save({ finance: { vehicleDebt: toMoney(x.vehicleDebt), cardDebt: toMoney(x.cardDebt), otherDebt: toMoney(x.otherDebt), fundsForCosts: toMoney(x.fundsForCosts) } })
+    if (!saved) return
+    form.markClean()
+    try {
+      await api.simulations.run({ source: { type: 'application', id: app.id }, input: saved.data.goal })
+      navigate('/optimize/baseline')
+    } catch (err) {
+      setSimError(err.message)
+    }
+  })
+  return (
+    <FormLayout
+      onSubmit={onSubmit}
+      saving={saving}
+      cta="Lihat Kondisi KPR"
+      onDemo={() => form.setValues({ vehicleDebt: '1000000', cardDebt: '500000', otherDebt: '0', fundsForCosts: '25000000' })}
+      aside={<Aside icon={GaugeIcon} tone="warn" title="Rasio cicilan saat ini" rows={[{ k: 'Penghasilan', v: rupiah(income) }, { k: 'Total kewajiban', v: `${rupiah(obligations)}/bln` }, { k: 'Estimasi DTI', v: dti == null ? 'Belum tersedia' : percentRatio(dti), tone: dti == null ? 'mute' : dti <= 0.35 ? 'ok' : dti <= 0.45 ? 'warn' : 'bad' }]} note="Kebijakan setiap bank berbeda. DTI setelah pindah dihitung ulang per program (cicilan lama diganti cicilan baru)." />}
+    >
+      <UnsavedChangesGuard when={form.dirty && !saving} />
+      <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
+      <Group icon={WalletIcon} title="Penghasilan & KPR saat ini" desc="Diambil dari langkah sebelumnya.">
+        <FormGrid>
+          <ReadonlyField label="Penghasilan bulanan" value={rupiah(income)} sub="Dari Step 1" onEdit={() => navigate('/optimize/1', { state: { from: 'review' } })} />
+          <ReadonlyField label="Cicilan KPR saat ini" value={rupiah(app.data.oldLoan?.currentPayment)} sub="Akan dilunasi saat Take Over" />
+        </FormGrid>
+      </Group>
+      <Group icon={CreditCardIcon} title="Kewajiban lain per bulan" desc="Isi 0 jika tidak ada.">
+        <FormGrid>
+          <MoneyField label="Cicilan kendaraan" placeholder="0" {...form.bind('vehicleDebt')} />
+          <MoneyField label="Kartu kredit / paylater" placeholder="0" {...form.bind('cardDebt')} />
+          <MoneyField label="Pinjaman lain" placeholder="0" {...form.bind('otherDebt')} />
+          <MoneyField label={topup ? 'Dana tunai cadangan untuk biaya' : 'Dana untuk biaya Take Over'} placeholder="0" hint={topup ? 'Pada Top-up, biaya umumnya dipotong dari pencairan.' : 'Dipakai membayar penalti, provisi, dan notaris.'} {...form.bind('fundsForCosts')} />
+        </FormGrid>
+      </Group>
+      {(error || simError) && <Notice tone="bad" role="alert" title={simError ? 'Simulasi tidak dapat dihitung' : undefined}>{error || simError}</Notice>}
+    </FormLayout>
+  )
+}
+
+// ---------- Step 6 ----------
+const GROUPS = [
+  ['identity', 'IDENTITAS & PENGHASILAN', IdCardIcon],
+  ['old_loan', 'KPR LAMA', LandmarkIcon],
+  ['property', 'PROPERTI', HouseIcon],
+  ['topup', 'DANA TAMBAHAN', HandCoinsIcon],
+]
+
+function TakeoverDocsStep({ app, setApp, next, fromReview }) {
+  const [demo, setDemo] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const required = app.requiredDocuments.filter((d) => d.required)
+  const done = required.filter((d) => ['uploaded', 'verified'].includes(app.documents[d.type]?.status)).length
+  const complete = done === required.length
+  const upload = (type) => async (file, onProgress) => setApp(await api.applications.uploadDocument(app.id, { documentType: type, file }, { onProgress }))
+  const uploadAll = async () => {
+    setDemo(true)
+    try {
+      let latest = app
+      for (const d of required) {
+        if (['uploaded', 'verified'].includes(latest.documents[d.type]?.status)) continue
+        latest = await api.applications.uploadDocument(app.id, { documentType: d.type, file: { name: `${d.type.replaceAll('_', '-')}.pdf`, size: 380_000, type: 'application/pdf' } })
+      }
+      setApp(latest)
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setDemo(false)
+    }
+  }
+  return (
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex min-w-0 flex-col gap-5">
+        {GROUPS.map(([key, title, Icon]) => {
+          const docs = app.requiredDocuments.filter((d) => d.group === key)
+          if (!docs.length) return null
+          return (
+            <Panel key={key} className="gap-3 sm:p-7">
+              <span className="flex items-center gap-2.5 text-[13px] font-extrabold tracking-[0.4px] text-ink-3">
+                <Icon className="size-[18px] text-primary" aria-hidden />
+                {title}
+              </span>
+              {docs.map((d) => (
+                <UploadRow key={d.type} doc={d} state={app.documents[d.type]} onUpload={upload(d.type)} compact />
+              ))}
+            </Panel>
+          )
+        })}
+      </div>
+      <aside className="flex flex-col gap-3.5 rounded-card bg-card p-6 shadow-card lg:sticky lg:top-6">
+        <span className="text-[13px] font-extrabold text-ink-3">Dokumen wajib</span>
+        <span className="text-[30px] font-extrabold" role="status">
+          {done} <span className="text-base text-muted-foreground">dari {required.length}</span>
+        </span>
+        <ProgressBar value={(done / Math.max(1, required.length)) * 100} label="Dokumen wajib terunggah" barClassName="bg-success-strong" />
+        <p className="text-[13px] leading-5 text-ink-3">Dokumen KPR lama dan properti diperlukan untuk Take Over, berbeda dari KPR baru. JPG, PNG, PDF · maks 5MB. Setiap file tersimpan otomatis.</p>
+        {import.meta.env.DEV && !complete && (
+          <button type="button" onClick={uploadAll} disabled={demo} className="w-fit text-[13px] font-bold text-primary underline">
+            {demo ? 'Mengunggah…' : 'Unggah semua (demo)'}
+          </button>
+        )}
+        <Button
+          onClick={async () => {
+            if (!complete || saving) return
+            setSaving(true)
+            try {
+              setApp(await api.applications.saveStep(app.id, { step: 6, values: {} }))
+              next('/optimize/7')
+            } catch (e) {
+              toast.error(e.message)
+              setSaving(false)
+            }
+          }}
+          aria-disabled={!complete}
+          aria-busy={saving}
+          className={cn(!complete && 'bg-border text-ink-3 hover:bg-border')}
+        >
+          {saving && <Spinner />}
+          {fromReview ? 'Simpan & kembali ke Review' : 'Simpan & Lanjutkan'}
+        </Button>
+        {!complete && <span className="text-xs text-muted-foreground">Unggah semua dokumen wajib untuk lanjut.</span>}
+      </aside>
+    </div>
+  )
+}
+
+// ---------- Step 7 ----------
+function TakeoverReview({ app, navigate }) {
+  const [cons, setCons] = useState({ dataAccuracy: false, sendToBank: false })
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState(null)
+  const { personal: p = {}, employment: e = {}, oldLoan: o = {}, goal: g = {}, property: pr = {}, finance: f = {} } = app.data
+  const s = app.selection
+  const required = app.requiredDocuments.filter((d) => d.required)
+  const done = required.filter((d) => ['uploaded', 'verified'].includes(app.documents[d.type]?.status)).length
+  const docOk = done === required.length
+  const canSubmit = docOk && !!s && cons.dataAccuracy && cons.sendToBank
+  const edit = (to) => () => navigate(to, { state: { from: 'review' } })
+  const secs = [
+    { title: 'Data Pribadi', lines: [`${p.fullName} · ${labelOf(OCCUPATIONS, e.occupation)}`, `Penghasilan ${rupiah(e.monthlyIncome)}`], edit: edit('/optimize/1') },
+    { title: 'KPR Lama', lines: [`${o.bankName} · Sisa ${rupiah(o.outstanding)}${o.source === 'estimate' ? ' (estimasi)' : ''}`, `Cicilan ${rupiah(o.currentPayment)} · ${percentBps(o.rateBps)}`], edit: edit('/optimize/2') },
+    { title: 'Tujuan', lines: g.mode === 'topup' ? ['Pindah KPR + dana tambahan', `Top-up ${rupiah(g.requestedTopup)} · ${labelOf(PURPOSES, g.purpose)}`] : ['Pindah KPR tanpa dana tambahan', labelOf(GOALS, g.goal)], edit: edit('/optimize/3') },
+    { title: 'Properti', lines: [`${labelOf(PROPERTY_TYPES, pr.propertyType)} · ${labelOf(CERTIFICATES, pr.certificateType)} · ${pr.city ?? ''}`, pr.estimatedValue ? `Estimasi nilai ${rupiah(pr.estimatedValue)}` : 'Nilai properti belum diisi'], edit: edit('/optimize/4') },
+    { title: 'Kemampuan Bayar', lines: [`Kewajiban lain ${rupiah((f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0))}/bln`], edit: edit('/optimize/5') },
+    { title: 'Program Baru', lines: s ? [`${s.bankName} · ${s.productName} ${percentBps(s.fixedRateBps)}`, `Cicilan estimasi ${rupiah(s.estimatedPayment)} · ${tenorLabel(s.tenorMonths)}`, g.mode === 'topup' ? `Plafon ${rupiah(s.loanAmount)} · Dana bersih ${rupiah(s.netTopup)}` : `Biaya estimasi ${rupiah(s.feesTotal)} · Break-even ${s.breakEvenMonth ? `${s.breakEvenMonth} bulan` : 'tidak ada'}`] : ['Belum dipilih'], edit: () => navigate('/optimize/programs'), warn: s ? '' : 'Pilih satu program.' },
+    { title: 'Dokumen', lines: [`${done} dari ${required.length} wajib lengkap`], edit: edit('/optimize/6'), warn: docOk ? '' : 'Lengkapi dokumen wajib sebelum submit.' },
+  ]
+  const submit = async () => {
+    if (!canSubmit || pending) return
+    setPending(true)
+    setError(null)
+    try {
+      await api.applications.submit(app.id, { consents: cons })
+      toast.success(`Pengajuan terkirim ke ${s.bankName}. Data sekarang read-only.`)
+      navigate('/optimize/success', { replace: true, state: { id: app.id } })
+    } catch (err) {
+      setError(err)
+      setPending(false)
+    }
+  }
+  return (
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex min-w-0 flex-col gap-3.5">
+        {secs.map((x) => (
+          <section key={x.title} className={cn('flex items-start justify-between gap-4 rounded-3xl border bg-card px-6 py-5 shadow-card', x.warn ? 'border-[#f2d27a]' : 'border-card')}>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <h2 className="text-[13px] font-extrabold text-ink-3">{x.title}</h2>
+              {x.lines.map((l) => (
+                <span key={l} className="text-sm leading-[21px] font-semibold">
+                  {l}
+                </span>
+              ))}
+              {x.warn && <span className="text-xs font-bold text-warning-text">{x.warn}</span>}
+            </div>
+            <button type="button" onClick={x.edit} className="min-h-11 shrink-0 text-[13px] font-bold text-primary">
+              Edit
+            </button>
+          </section>
+        ))}
+      </div>
+      <aside className="flex flex-col gap-4 rounded-card bg-card p-6 shadow-card lg:sticky lg:top-6">
+        <h2 className="text-base font-extrabold">Persetujuan</h2>
+        <CheckboxField label="Data yang saya berikan benar dan dapat dipertanggungjawabkan." checked={cons.dataAccuracy} onChange={(x) => setCons((c) => ({ ...c, dataAccuracy: x }))} />
+        <CheckboxField label={`Saya setuju data dikirim ke ${s?.bankName ?? 'bank terpilih'} untuk pengajuan ini.`} checked={cons.sendToBank} onChange={(x) => setCons((c) => ({ ...c, sendToBank: x }))} />
+        {!canSubmit && <p className="rounded-xl bg-muted px-3.5 py-3 text-xs leading-[18px] font-semibold text-ink-3">Lengkapi {[!docOk && 'dokumen wajib', !s && 'pilihan program', !(cons.dataAccuracy && cons.sendToBank) && 'kedua persetujuan'].filter(Boolean).join(', ')} untuk submit.</p>}
+        {error && <Notice tone="bad" role="alert">{error.message}</Notice>}
+        <Button onClick={submit} aria-disabled={!canSubmit || pending} aria-busy={pending} className={cn(!canSubmit && 'bg-border text-ink-3 hover:bg-border')}>
+          {pending && <Spinner />}
+          {pending ? 'Mengirim…' : 'Submit Pengajuan'}
+        </Button>
+        <Disclaimer className="flex items-start gap-2">
+          <LockIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          Pengajuan ini hanya dikirim ke satu bank/program. Setelah submit, data pengajuan terkunci dan hanya bisa dilihat.
+        </Disclaimer>
+      </aside>
+    </div>
+  )
+}

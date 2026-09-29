@@ -1,0 +1,126 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Tokens copied from the approved Claude Design artifact (RuangKPR App (Standalone).html).
+   Deviation for WCAG AA: muted text #6B7A90 (4.36:1 on white) → #5F6E84 (5.2:1). */
+@theme inline {
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-ink-2: #152033;
+  --color-ink-3: #536176;
+  --color-line: #eef1f6;
+  --color-field: #f6f7fa;
+  --color-primary-dark: #00266b;
+  --color-step-current: #6e93d6;
+  --color-brand-red: #dc1c2e;
+  --color-success: #0e7a43;
+  --color-success-strong: #1b8a5a;
+  --color-success-bg: #e7f6ee;
+  --color-warning: #7a4a00;
+  --color-warning-text: #9a5b00;
+  --color-warning-bg: #fff1c2;
+  --color-warning-soft: #fff8e6;
+  --color-warning-border: #f0d48a;
+  --color-warning-accent: #e0a100;
+  --color-danger: #c4161c;
+  --color-danger-strong: #b3141f;
+  --color-danger-bg: #fdecee;
+  --color-danger-border: #f5c2c7;
+  --color-chart-interest: #9db6e3;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+  --radius-card: 24px;
+
+  --shadow-card: 0 6px 24px #0b1b3314;
+  --shadow-pop: 0 24px 60px #0b1b3340;
+}
+
+:root {
+  --background: #f4f6fa;
+  --foreground: #0b1b33;
+  --card: #ffffff;
+  --card-foreground: #0b1b33;
+  --popover: #ffffff;
+  --popover-foreground: #0b1b33;
+  --primary: #003da5;
+  --primary-foreground: #ffffff;
+  --secondary: #e8effb;
+  --secondary-foreground: #003da5;
+  --muted: #f4f6fa;
+  --muted-foreground: #5f6e84;
+  --accent: #e8effb;
+  --accent-foreground: #003da5;
+  --destructive: #dc1c2e;
+  --border: #e6eaf1;
+  --input: #e5e8ef;
+  --ring: #003da5;
+  --radius: 12px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  input[type="range"] {
+    accent-color: var(--primary);
+  }
+  :focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--ring) 55%, transparent);
+    outline-offset: 2px;
+  }
+}
+
+@utility hero-gradient {
+  background: linear-gradient(-104.5deg, #00266be6 8.6%, #0a57d0e6 91.4%), #003da5;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
