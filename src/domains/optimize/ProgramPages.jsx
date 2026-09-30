@@ -143,7 +143,7 @@ export function ProgramsPage() {
   const navigate = useNavigate()
   const [sort, setSort] = useState(undefined)
   const { data: sim, error, reload, loading } = useSimulation(sort)
-  if (!sim) return loading ? <><Header title="Pilihan program" /><LoadingCards count={3} className="xl:grid-cols-1 md:grid-cols-1" /></> : <NoSimulation error={error} onRetry={reload} />
+  if (!sim) return loading ? <><Header title="Pilihan program" /><LoadingCards count={3} /></> : <NoSimulation error={error} onRetry={reload} />
   const topup = sim.input.mode === 'topup'
   const b = sim.baseline
   const sorts = topup ? ['rekomendasi', 'cicilan', 'total'] : ['total', 'cicilan', 'fixed', 'bunga']
@@ -175,8 +175,8 @@ export function ProgramsPage() {
           </div>
         </div>
       </div>
-      {!sim.items.length && <EmptyState icon={SearchXIcon} title="Belum ada program yang cocok" action={<Button size="md" variant="secondary" onClick={() => navigate(sim.source.type === 'application' ? '/optimize/3' : `/optimize/start?mode=${sim.input.mode}`)}>Ubah tujuan</Button>}>Coba tenor lebih panjang atau kurangi dana tambahan.</EmptyState>}
-      <div className={cn('flex flex-col gap-4', loading && 'opacity-60')} aria-busy={loading}>
+      {!sim.items.length && <EmptyState icon={SearchXIcon} title="Belum ada program yang cocok" action={<Button size="md" variant="secondary" onClick={() => navigate(sim.source.type === 'application' ? '/optimize/5' : `/optimize/start?mode=${sim.input.mode}`)}>Ubah tujuan</Button>}>Coba tenor lebih panjang atau kurangi dana tambahan.</EmptyState>}
+      <div className={cn('grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3', loading && 'opacity-60')} aria-busy={loading}>
         {sim.items.map((x) => (
           <ProgramCard key={x.productId} x={x} sim={sim} onOpen={() => navigate(`/optimize/programs/${x.productId}`)} />
         ))}
@@ -221,7 +221,7 @@ function ProgramCard({ x, sim, onOpen }) {
         ['Estimasi DTI', percentRatio(x.dtiRatio), eligTone],
       ]
   return (
-    <article className={cn('flex flex-col gap-[18px] rounded-card border-2 bg-card px-6 py-6 shadow-card sm:px-7', x.recommended ? 'border-primary' : 'border-card')}>
+    <article className={cn('flex flex-col gap-[18px] rounded-card border-2 bg-card p-6 shadow-card', x.recommended ? 'border-primary' : 'border-card')}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3.5">
           <BankMark mark={x.bank.mark} />
@@ -239,18 +239,14 @@ function ProgramCard({ x, sim, onOpen }) {
           {x.stale && <Chip tone="warn">Data perlu dicek ulang</Chip>}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
-        {stats.map(([k, v, tone]) => (
-          <StatTile key={k} label={k} value={v} tone={tone} className="py-3" />
-        ))}
-      </div>
+      <SummaryRows size="sm" rows={stats.map(([k, v, tone]) => ({ k, v, tone }))} />
       {st && (
         <div className={cn('flex items-center gap-2 rounded-xl px-3.5 py-3 text-[13px] font-bold', TONE_BOX[st.tone])}>
           <st.icon className="size-4 shrink-0" aria-hidden />
           {st.t}
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3">
         <span className={cn('text-xs', x.stale ? 'font-semibold text-warning-text' : 'text-muted-foreground')}>{x.stale ? `Data produk terakhir diperbarui ${dateShort(x.lastVerifiedAt)}. Angka bisa berbeda.` : `Data produk diperbarui ${dateShort(x.lastVerifiedAt)}`}</span>
         <Button variant="outline" size="sm" onClick={onOpen}>
           Lihat Detail

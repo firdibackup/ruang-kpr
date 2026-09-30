@@ -1,0 +1,57 @@
+// Take Over wizard insights built only from what the user already entered (steps 1–4).
+// Anything that cannot be computed yet is null — shown as "belum dapat dihitung", never a fake number.
+import { CalculationError, calculateDti, calculatePaymentCapacity, calculatePropertyMetrics, calculateTopupScenario } from '@/calculations/finance'
+import { takeoverBaseline } from '@/calculations/programs'
+import { healthScore, rateMode } from '@/domains/mortgages/derive'
+
+const incomeOf = (e = {}) => (e.monthlyIncome ?? 0) + (e.jointIncome ? e.partnerIncome ?? 0 : 0)
+const debtOf = (f = {}) => (f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0)
+// Estimated old loans have no known rate type: report the rate as unknown instead of assuming fixed.
+const rateOf = (o, clock) => (o.rateType ? rateMode({ currentRateType: o.rateType, fixedUntil: o.fixedUntil }, clock) : { mode: null, daysUntilFixedEnd: null })
+
+function calc(fn) {
+  try {
+    return fn()
+  } catch (e) {
+    if (e instanceof CalculationError) return null
+    throw e
+  }
+}
+
+// Same provisional score as the monitored-mortgage KPR Health; propertyValue is passed live from the form.
+export function applicationHealth({ employment, oldLoan: o = {}, finance }, clock, propertyValue) {
+  const income = incomeOf(employment)
+  const dti = income > 0 && o.currentPayment > 0 ? calc(() => calculateDti({ monthlyIncome: income, mortgagePayment: o.currentPayment, otherMonthlyDebt: debtOf(finance) })) : null
+  const property = propertyValue > 0 && o.outstanding > 0 ? calc(() => calculatePropertyMetrics({ propertyValue, outstanding: o.outstanding })) : null
+  const rate = rateOf(o, clock)
+  const paidRatio = o.originalPrincipal > 0 && o.outstanding >= 0 ? Math.min(1, Math.max(0, (o.originalPrincipal - o.outstanding) / o.originalPrincipal)) : 0
+  const health = healthScore({ dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, mode: rate.mode, daysUntilFixedEnd: rate.daysUntilFixedEnd, paidRatio })
+  return { ...health, dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, rate, paidRatio }
+}
+
+// Financial picture per goal option (Take Over only vs + Top-up), before any bank product is involved.
+export function goalConditions({ employment, oldLoan: o = {}, finance: f = {}, property: p = {} }, clock) {
+  const income = incomeOf(employment)
+  const otherDebt = debtOf(f)
+  const loanReady = o.outstanding > 0 && o.remainingMonths > 0 && o.currentPayment > 0
+  const baseline = loanReady ? calc(() => takeoverBaseline({ ...o, asOf: clock })) : null
+  const capacity = income > 0 ? calc(() => calculatePaymentCapacity({ monthlyIncome: income, existingDebt: otherDebt })) : null
+  const value = p.estimatedValue
+  // Conservative 70% LTV reference, same as the Properti step; per-bank limits apply in the program list.
+  const topup =
+    value > 0 && o.outstanding > 0
+      ? calc(() => calculateTopupScenario({ propertyValue: value, maxLtvBps: 7000, oldOutstanding: o.outstanding, newLoanAmount: Math.max(o.outstanding, Math.floor(value * 0.7)) }))
+      : null
+  return {
+    outstanding: o.outstanding ?? null,
+    exitCosts: baseline?.exit.total ?? null,
+    fundsForCosts: f.fundsForCosts ?? null,
+    dtiRatio: income > 0 && o.currentPayment > 0 ? (o.currentPayment + otherDebt) / income : null,
+    rate: rateOf(o, clock),
+    maxLoanByCollateral: topup?.maxLoanByCollateral ?? null,
+    maxGrossTopup: topup?.maxGrossTopup ?? null,
+    // Max mortgage payment within the 35% guideline after other debts, and what is left above today's payment.
+    safePayment: capacity?.remainingCapacity ?? null,
+    paymentRoom: capacity && o.currentPayment > 0 ? capacity.remainingCapacity - o.currentPayment : null,
+  }
+}

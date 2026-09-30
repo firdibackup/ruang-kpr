@@ -1,0 +1,45 @@
+import { describe, expect, it } from 'vitest'
+import { applicationHealth, goalConditions } from './insights'
+
+const clock = '2026-09-30'
+const data = {
+  employment: { monthlyIncome: 15_000_000 },
+  oldLoan: { originalPrincipal: 500_000_000, outstanding: 400_000_000, currentPayment: 5_000_000, rateBps: 1050, rateType: 'floating', remainingMonths: 180, dueDay: 12 },
+  finance: { vehicleDebt: 1_000_000, cardDebt: 500_000, otherDebt: 0, fundsForCosts: 25_000_000 },
+  property: { estimatedValue: 800_000_000 },
+}
+
+describe('applicationHealth', () => {
+  it('scores DTI, live LTV, rate and progress from wizard data', () => {
+    const h = applicationHealth(data, clock, 800_000_000)
+    expect(h.dtiRatio).toBeCloseTo(6_500_000 / 15_000_000)
+    expect(h.ltvRatio).toBe(0.5)
+    expect(h.rate.mode).toBe('floating')
+    expect(h.paidRatio).toBe(0.2)
+    expect(h.partial).toBe(false)
+  })
+
+  it('marks the score partial when the rate type is unknown (estimate path) or no property value', () => {
+    const h = applicationHealth({ ...data, oldLoan: { ...data.oldLoan, rateType: null } }, clock, null)
+    expect(h.components.find((c) => c.key === 'rate').score).toBeNull()
+    expect(h.ltvRatio).toBeNull()
+    expect(h.partial).toBe(true)
+  })
+})
+
+describe('goalConditions', () => {
+  it('computes exit costs, top-up headroom and payment room', () => {
+    const c = goalConditions(data, clock)
+    expect(c.exitCosts).toBeGreaterThan(0)
+    expect(c.maxLoanByCollateral).toBe(560_000_000)
+    expect(c.maxGrossTopup).toBe(160_000_000)
+    expect(c.safePayment).toBe(5_250_000 - 1_500_000)
+    expect(c.paymentRoom).toBe(3_750_000 - 5_000_000) // already above the 35% guideline
+  })
+
+  it('leaves top-up figures null without a property value', () => {
+    const c = goalConditions({ ...data, property: {} }, clock)
+    expect(c.maxLoanByCollateral).toBeNull()
+    expect(c.maxGrossTopup).toBeNull()
+  })
+})

@@ -11,8 +11,8 @@ import {
   CalculatorIcon,
   CreditCardIcon,
   GaugeIcon,
-  GitBranchIcon,
   HandCoinsIcon,
+  HeartPulseIcon,
   HouseIcon,
   IdCardIcon,
   InfoIcon,
@@ -67,6 +67,7 @@ import {
 } from "@/components/shared/dialogs";
 import { UploadRow } from "@/components/shared/UploadRow";
 import {
+  Chip,
   Disclaimer,
   ErrorPanel,
   IconBox,
@@ -75,12 +76,18 @@ import {
   PageSkeleton,
   ProgressBar,
   Spinner,
+  SummaryRows,
 } from "@/components/shared/ui";
 import {
   toEmployment,
   toPersonal,
   validatePersonal,
 } from "@/domains/applications/validation";
+import {
+  HEALTH_SENTENCE,
+  HealthRing,
+} from "@/domains/home/MonitoringDashboard";
+import { applicationHealth, goalConditions } from "./insights";
 import { Aside, OptimizeHeader, modeName, useOptimize } from "./shared";
 import {
   validateCapacity,
@@ -157,7 +164,8 @@ export function OptimizeStepPage({ employment = false }) {
     <>
       <OptimizeHeader
         n={n}
-        reached={app.currentStep}
+        // Personal data is already saved here (guarded above): count it as half of step 1.
+        reached={employment ? Math.max(app.currentStep, 1.5) : app.currentStep}
         title={`Pengajuan ${PN}`}
         subtitle={subtitle}
         back={fromReview ? "/optimize/7" : back}
@@ -169,9 +177,9 @@ export function OptimizeStepPage({ employment = false }) {
           <PersonalStep {...props} />
         ))}
       {n === 2 && <OldLoanStep {...props} />}
-      {n === 3 && <GoalStep {...props} />}
+      {n === 3 && <CapacityStep {...props} />}
       {n === 4 && <PropertyStep {...props} />}
-      {n === 5 && <CapacityStep {...props} />}
+      {n === 5 && <GoalStep {...props} />}
       {n === 6 && <TakeoverDocsStep {...props} />}
       {n === 7 && <TakeoverReview {...props} />}
     </>
@@ -623,8 +631,8 @@ function OldLoanStep({ app, clock, setApp, navigate }) {
   );
 }
 
-// ---------- Step 3 ----------
-function GoalStep({ app, setApp, next }) {
+// ---------- Step 5 ----------
+function GoalStep({ app, clock, setApp, navigate, fromReview }) {
   const g = app.data.goal ?? {};
   const form = useForm(
     {
@@ -639,7 +647,8 @@ function GoalStep({ app, setApp, next }) {
     validateGoal,
   );
   const [confirmSwitch, setConfirmSwitch] = useState(null);
-  const { saving, error, save } = useStepSave(app, 3, setApp);
+  const { saving, error, save } = useStepSave(app, 5, setApp);
+  const [simError, setSimError] = useState("");
   const v = form.values;
   const setMode = (mode) => {
     if (
@@ -655,6 +664,7 @@ function GoalStep({ app, setApp, next }) {
     });
   };
   const onSubmit = form.submit(async (x) => {
+    setSimError("");
     const saved = await save({
       goal: {
         mode: x.mode,
@@ -669,21 +679,116 @@ function GoalStep({ app, setApp, next }) {
             : null,
       },
     });
-    if (saved) {
-      form.markClean();
-      next("/optimize/4");
+    if (!saved) return;
+    form.markClean();
+    // Last data step: the goal is the simulation input, so every save re-runs it.
+    try {
+      await api.simulations.run({
+        source: { type: "application", id: app.id },
+        input: saved.data.goal,
+      });
+      navigate(
+        fromReview && saved.selection ? "/optimize/7" : "/optimize/baseline",
+      );
+    } catch (err) {
+      setSimError(err.message);
     }
   });
+  const needsValue =
+    v.mode === "topup" && !(app.data.property?.estimatedValue > 0);
+  const c = goalConditions(app.data, clock);
+  const r = c.rate;
+  const options = [
+    {
+      mode: "takeover",
+      title: "Tanpa dana tambahan",
+      rows: [
+        { k: "Plafon baru ≈ sisa pokok", v: rupiah(c.outstanding) },
+        { k: "Biaya keluar bank lama (est.)", v: rupiah(c.exitCosts) },
+        {
+          k: "Dana kamu untuk biaya",
+          v: rupiah(c.fundsForCosts),
+          tone:
+            c.fundsForCosts == null || c.exitCosts == null
+              ? undefined
+              : c.fundsForCosts >= c.exitCosts
+                ? "ok"
+                : "warn",
+        },
+        {
+          k: "Rasio cicilan saat ini",
+          v: percentRatio(c.dtiRatio),
+          tone:
+            c.dtiRatio == null
+              ? undefined
+              : c.dtiRatio <= 0.35
+                ? "ok"
+                : c.dtiRatio <= 0.45
+                  ? "warn"
+                  : "bad",
+        },
+      ],
+      tip:
+        r.mode === "floating"
+          ? "Bunga kamu sudah floating: pindah ke fixed baru bisa menurunkan cicilan."
+          : r.mode === "warning"
+            ? `Masa fixed berakhir ${r.daysUntilFixedEnd} hari lagi: saat yang tepat membandingkan program.`
+            : "Biaya bank baru (provisi, notaris, appraisal) dihitung per program.",
+    },
+    {
+      mode: "topup",
+      title: "+ Dana tambahan",
+      rows: [
+        {
+          k: "Batas pinjaman (LTV 70%)",
+          v:
+            c.maxLoanByCollateral == null
+              ? "Isi nilai properti"
+              : rupiah(c.maxLoanByCollateral),
+        },
+        {
+          k: "Top-up kotor maksimum",
+          v: rupiah(c.maxGrossTopup),
+          tone:
+            c.maxGrossTopup == null
+              ? undefined
+              : c.maxGrossTopup > 0
+                ? "ok"
+                : "bad",
+        },
+        {
+          k: "Cicilan aman maks (35%)",
+          v: c.safePayment == null ? rupiah(null) : `${rupiah(c.safePayment)}/bln`,
+        },
+        {
+          k: "Ruang cicilan tambahan",
+          v:
+            c.paymentRoom == null
+              ? rupiah(null)
+              : c.paymentRoom > 0
+                ? `${rupiah(c.paymentRoom)}/bln`
+                : "Tidak ada",
+          tone:
+            c.paymentRoom == null ? undefined : c.paymentRoom > 0 ? "ok" : "bad",
+        },
+      ],
+      warn: c.paymentRoom != null && c.paymentRoom <= 0,
+      tip:
+        c.paymentRoom != null && c.paymentRoom <= 0
+          ? "Cicilan sekarang sudah di atas batas aman 35%, jadi Top-up berisiko ditolak."
+          : "Biaya dipotong dari pencairan. Nilai rumah final mengikuti appraisal bank.",
+    },
+  ];
   return (
     <FormLayout
       onSubmit={onSubmit}
       saving={saving}
-      cta="Simpan & Lanjutkan"
+      cta={fromReview ? "Simpan & kembali ke Review" : "Lihat Kondisi KPR"}
       aside={
         <Aside
-          icon={GitBranchIcon}
-          title="Dua jalur, satu pengajuan"
-          note="Tanpa dana tambahan: plafon baru sama dengan sisa pokok. Dengan Top-up: plafon baru mencakup sisa pokok, dana tambahan, dan biaya — dibatasi nilai properti × LTV bank."
+          icon={ListOrderedIcon}
+          title="Sampai pilih program bank"
+          note="Setelah ini: lihat kondisi KPR → bandingkan program bank (diurutkan sesuai tujuan) → pilih 1 program → unggah dokumen → review & submit. Data belum dikirim ke bank sebelum kamu submit."
         />
       }
     >
@@ -715,6 +820,29 @@ function GoalStep({ app, setApp, next }) {
           {...form.bind("mode")}
           onChange={setMode}
         />
+        <div className="@container flex flex-col gap-2.5">
+          <h3 className="text-[13px] font-extrabold text-ink-3">
+            Kondisi keuangan kamu per pilihan
+          </h3>
+          <div className="grid grid-cols-1 gap-3 @lg:grid-cols-2">
+            {options.map((o) => (
+              <section
+                key={o.mode}
+                aria-label={`Kondisi keuangan: ${o.title}`}
+                className={cn(
+                  "flex flex-col gap-2.5 rounded-2xl border bg-card px-4 py-3.5",
+                  v.mode === o.mode ? "border-primary" : "border-border",
+                )}
+              >
+                <span className="text-sm font-extrabold">{o.title}</span>
+                <SummaryRows size="sm" rows={o.rows} />
+                <Notice tone={o.warn ? "warn" : "muted"} className="mt-auto">
+                  {o.tip}
+                </Notice>
+              </section>
+            ))}
+          </div>
+        </div>
       </Group>
       {v.mode === "takeover" && (
         <Group
@@ -789,11 +917,33 @@ function GoalStep({ app, setApp, next }) {
               {...form.bind("maxPayment")}
             />
           </FormGrid>
+          {needsValue && (
+            <Notice
+              tone="warn"
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate("/optimize/4")}
+                >
+                  Isi nilai properti
+                </Button>
+              }
+            >
+              Estimasi nilai properti belum diisi, jadi dana bersih Top-up belum
+              dapat dihitung.
+            </Notice>
+          )}
         </Group>
       )}
-      {error && (
-        <Notice tone="bad" role="alert">
-          {error}
+      {(error || simError) && (
+        <Notice
+          tone="bad"
+          role="alert"
+          title={simError ? "Simulasi tidak dapat dihitung" : undefined}
+        >
+          {error || simError}
         </Notice>
       )}
       <ConfirmDialog
@@ -818,8 +968,66 @@ function GoalStep({ app, setApp, next }) {
   );
 }
 
+const scoreTone = (s) =>
+  s == null ? "mute" : s >= 80 ? "ok" : s >= 60 ? "warn" : "bad";
+
+// KPR Health from the data entered so far; LTV follows the property value as it is typed.
+function HealthAside({ health: h, note, sticky }) {
+  const tone = (key) => scoreTone(h.components.find((x) => x.key === key).score);
+  const weakest = h.components
+    .filter((x) => x.score !== null)
+    .sort((a, b) => a.score - b.score)[0];
+  const r = h.rate;
+  return (
+    <Aside
+      icon={HeartPulseIcon}
+      title="Kesehatan KPR kamu"
+      note={note}
+      sticky={sticky}
+      rows={[
+        { k: "Beban cicilan", v: percentRatio(h.dtiRatio), tone: tone("dti") },
+        {
+          k: "LTV (sisa pokok ÷ nilai)",
+          v: h.ltvRatio == null ? "Isi estimasi nilai" : percentRatio(h.ltvRatio),
+          tone: tone("ltv"),
+        },
+        {
+          k: "Risiko bunga",
+          v:
+            r.mode == null
+              ? "Belum diketahui"
+              : r.mode === "floating"
+                ? "Sudah floating"
+                : r.daysUntilFixedEnd != null
+                  ? `Fixed ${r.daysUntilFixedEnd} hari lagi`
+                  : "Fixed",
+          tone: tone("rate"),
+        },
+        { k: "Pokok lunas", v: percentRatio(h.paidRatio, 0), tone: tone("progress") },
+      ]}
+    >
+      <div className="flex items-center gap-4">
+        <HealthRing health={h} size={80} />
+        <div className="flex min-w-0 flex-col items-start gap-1.5">
+          <Chip tone={h.tone}>
+            {h.label}
+            {h.partial ? " · parsial" : ""}
+          </Chip>
+          <p className="text-[13px] leading-5 font-semibold text-ink-2">
+            {h.score >= 80
+              ? "Kondisi KPR kamu sehat."
+              : weakest?.key === "rate" && r.mode === "floating"
+                ? "Bunga kamu sudah floating."
+                : HEALTH_SENTENCE[weakest?.key]}
+          </p>
+        </div>
+      </div>
+    </Aside>
+  );
+}
+
 // ---------- Step 4 ----------
-function PropertyStep({ app, setApp, next }) {
+function PropertyStep({ app, clock, setApp, next }) {
   const p = app.data.property ?? {};
   const mode = app.optimizationMode;
   const validate = useCallback(
@@ -886,58 +1094,55 @@ function PropertyStep({ app, setApp, next }) {
       estimatedValue: "750000000",
       disputed: "no",
     });
+  const health = (
+    <HealthAside
+      health={applicationHealth(app.data, clock, value)}
+      sticky={mode !== "topup"}
+      note={`${mode === "topup" ? "" : "Take Over umumnya butuh LTV maksimal 70–80%. "}Skor ini bukan skor kredit dan tidak menentukan persetujuan bank.`}
+    />
+  );
   const aside =
     mode === "topup" ? (
-      <Aside
-        icon={CalculatorIcon}
-        tone="warn"
-        title="Estimasi batas Top-up"
-        rows={
-          topupRef
-            ? [
-                { k: "Estimasi nilai properti", v: rupiah(value) },
-                { k: "LTV konservatif", v: "70%" },
-                {
-                  k: "Plafon maksimum",
-                  v: rupiah(topupRef.maxLoanByCollateral),
-                },
-                { k: "Sisa pokok lama", v: `−${rupiah(out)}` },
-                {
-                  k: "Top-up kotor maksimum",
-                  v: rupiah(topupRef.maxGrossTopup),
-                  tone: "ok",
-                },
-                {
-                  k: "Kebutuhan kamu",
-                  v: rupiah(app.data.goal?.requestedTopup),
-                },
-              ]
-            : []
-        }
-        note={
-          topupRef
-            ? "Belum termasuk biaya. Masih harus lolos DTI, usia, tenor, pekerjaan, riwayat kredit, legalitas, dan appraisal resmi."
-            : "Isi estimasi nilai properti untuk melihat batas Top-up."
-        }
-      />
+      // One sticky column: two individually sticky asides would slide over each other.
+      <div className="flex flex-col gap-4 lg:sticky lg:top-6">
+        <Aside
+          icon={CalculatorIcon}
+          sticky={false}
+          tone="warn"
+          title="Estimasi batas Top-up"
+          rows={
+            topupRef
+              ? [
+                  { k: "Estimasi nilai properti", v: rupiah(value) },
+                  { k: "LTV konservatif", v: "70%" },
+                  {
+                    k: "Plafon maksimum",
+                    v: rupiah(topupRef.maxLoanByCollateral),
+                  },
+                  { k: "Sisa pokok lama", v: `−${rupiah(out)}` },
+                  {
+                    k: "Top-up kotor maksimum",
+                    v: rupiah(topupRef.maxGrossTopup),
+                    tone: "ok",
+                  },
+                  // Filled at step 5; only known here when editing afterwards.
+                  app.data.goal?.requestedTopup > 0 && {
+                    k: "Kebutuhan kamu",
+                    v: rupiah(app.data.goal.requestedTopup),
+                  },
+                ]
+              : []
+          }
+          note={
+            topupRef
+              ? "Belum termasuk biaya. Masih harus lolos DTI, usia, tenor, pekerjaan, riwayat kredit, legalitas, dan appraisal resmi."
+              : "Isi estimasi nilai properti untuk melihat batas Top-up."
+          }
+        />
+        {health}
+      </div>
     ) : (
-      <Aside
-        icon={HouseIcon}
-        title="Nilai properti"
-        rows={
-          value > 0 && out
-            ? [
-                { k: "Sisa pokok", v: rupiah(out) },
-                {
-                  k: "LTV saat ini",
-                  v: percentRatio(out / value),
-                  tone: out / value <= 0.8 ? "ok" : "bad",
-                },
-              ]
-            : []
-        }
-        note="Dipakai menghitung LTV. Take Over umumnya butuh sisa pokok maksimal 70–80% dari nilai properti. Opsional untuk Take Over, tapi tanpa nilai ini LTV belum dapat dicek."
-      />
+      health
     );
   return (
     <FormLayout
@@ -1034,8 +1239,8 @@ function PropertyStep({ app, setApp, next }) {
   );
 }
 
-// ---------- Step 5 ----------
-function CapacityStep({ app, setApp, navigate }) {
+// ---------- Step 3 ----------
+function CapacityStep({ app, setApp, next, navigate, fromReview }) {
   const f = app.data.finance ?? {};
   const e = app.data.employment ?? {};
   const topup = app.optimizationMode === "topup";
@@ -1048,8 +1253,7 @@ function CapacityStep({ app, setApp, navigate }) {
     },
     validateCapacity,
   );
-  const { saving, error, save } = useStepSave(app, 5, setApp);
-  const [simError, setSimError] = useState("");
+  const { saving, error, save } = useStepSave(app, 3, setApp);
   const v = form.values;
   const income =
     (e.monthlyIncome ?? 0) + (e.jointIncome ? (e.partnerIncome ?? 0) : 0);
@@ -1060,7 +1264,6 @@ function CapacityStep({ app, setApp, navigate }) {
     (toMoney(v.otherDebt) ?? 0);
   const dti = income > 0 ? obligations / income : null;
   const onSubmit = form.submit(async (x) => {
-    setSimError("");
     const saved = await save({
       finance: {
         vehicleDebt: toMoney(x.vehicleDebt),
@@ -1069,23 +1272,16 @@ function CapacityStep({ app, setApp, navigate }) {
         fundsForCosts: toMoney(x.fundsForCosts),
       },
     });
-    if (!saved) return;
-    form.markClean();
-    try {
-      await api.simulations.run({
-        source: { type: "application", id: app.id },
-        input: saved.data.goal,
-      });
-      navigate("/optimize/baseline");
-    } catch (err) {
-      setSimError(err.message);
+    if (saved) {
+      form.markClean();
+      next("/optimize/4");
     }
   });
   return (
     <FormLayout
       onSubmit={onSubmit}
       saving={saving}
-      cta="Lihat Kondisi KPR"
+      cta={fromReview ? "Simpan & kembali ke Review" : "Simpan & Lanjutkan"}
       onDemo={() =>
         form.setValues({
           vehicleDebt: "1000000",
@@ -1182,13 +1378,9 @@ function CapacityStep({ app, setApp, navigate }) {
           />
         </FormGrid>
       </Group>
-      {(error || simError) && (
-        <Notice
-          tone="bad"
-          role="alert"
-          title={simError ? "Simulasi tidak dapat dihitung" : undefined}
-        >
-          {error || simError}
+      {error && (
+        <Notice tone="bad" role="alert">
+          {error}
         </Notice>
       )}
     </FormLayout>
@@ -1374,14 +1566,10 @@ function TakeoverReview({ app, navigate }) {
       edit: edit("/optimize/2"),
     },
     {
-      title: "Tujuan",
-      lines:
-        g.mode === "topup"
-          ? [
-              "Pindah KPR + dana tambahan",
-              `Top-up ${rupiah(g.requestedTopup)} · ${labelOf(PURPOSES, g.purpose)}`,
-            ]
-          : ["Pindah KPR tanpa dana tambahan", labelOf(GOALS, g.goal)],
+      title: "Kemampuan Bayar",
+      lines: [
+        `Kewajiban lain ${rupiah((f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0))}/bln`,
+      ],
       edit: edit("/optimize/3"),
     },
     {
@@ -1395,10 +1583,14 @@ function TakeoverReview({ app, navigate }) {
       edit: edit("/optimize/4"),
     },
     {
-      title: "Kemampuan Bayar",
-      lines: [
-        `Kewajiban lain ${rupiah((f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0))}/bln`,
-      ],
+      title: "Tujuan",
+      lines:
+        g.mode === "topup"
+          ? [
+              "Pindah KPR + dana tambahan",
+              `Top-up ${rupiah(g.requestedTopup)} · ${labelOf(PURPOSES, g.purpose)}`,
+            ]
+          : ["Pindah KPR tanpa dana tambahan", labelOf(GOALS, g.goal)],
       edit: edit("/optimize/5"),
     },
     {

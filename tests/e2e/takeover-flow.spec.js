@@ -54,6 +54,7 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/1\/pekerjaan/)
+  await expect(page.getByText('7% selesai.')).toBeAttached() // saved personal data moves the percent within step 1
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/2$/)
@@ -68,16 +69,21 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await page.getByLabel('Sisa tenor').fill('181')
   await save()
 
-  await expect(page).toHaveURL(/optimize\/3/)
+  await expect(page).toHaveURL(/optimize\/3/) // Kemampuan bayar
+  await page.getByRole('button', { name: 'Isi contoh data' }).click()
+  await save()
+  await expect(page).toHaveURL(/optimize\/4/) // Properti
+  await expect(page.getByText('Kesehatan KPR kamu')).toBeVisible()
+  await expect(page.getByText('Isi estimasi nilai')).toBeVisible()
+  await page.getByRole('button', { name: 'Isi contoh data' }).click()
+  await expect(page.getByText('Isi estimasi nilai')).toBeHidden() // LTV follows the typed property value
+  await save()
+  await expect(page).toHaveURL(/optimize\/5/) // Tujuan: last data step, runs the simulation
+  await expect(page.getByRole('region', { name: 'Kondisi keuangan: Tanpa dana tambahan' })).toContainText('Biaya keluar bank lama')
+  await expect(page.getByRole('region', { name: 'Kondisi keuangan: + Dana tambahan' })).toContainText('Top-up kotor maksimum')
   await page.getByRole('radio', { name: /Pindah KPR tanpa dana tambahan/ }).click()
   await page.getByRole('radio', { name: 'Cicilan bulanan lebih ringan' }).click()
   await page.getByLabel('Tenor baru yang diinginkan').selectOption('180')
-  await save()
-  await expect(page).toHaveURL(/optimize\/4/)
-  await page.getByRole('button', { name: 'Isi contoh data' }).click()
-  await save()
-  await expect(page).toHaveURL(/optimize\/5/)
-  await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await page.getByRole('button', { name: 'Lihat Kondisi KPR' }).click()
 
   await expect(page).toHaveURL(/optimize\/baseline/)

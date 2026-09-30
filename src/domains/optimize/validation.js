@@ -4,7 +4,7 @@ import { validateEmployment } from '@/domains/applications/validation'
 
 const minLen = (v, n) => String(v ?? '').trim().length >= n
 
-// Step 1 reuses the Primary employment rules; debts are collected in step 5 for this flow.
+// Step 1 reuses the Primary employment rules; debts are collected in step 3 for this flow.
 export function validateEmploymentBasic(v) {
   const { vehicleDebt: _a, cardDebt: _b, otherDebt: _c, ...rest } = validateEmployment({ ...v, vehicleDebt: '0', cardDebt: '0', otherDebt: '0' })
   return rest

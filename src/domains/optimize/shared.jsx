@@ -34,13 +34,15 @@ export function OptimizeHeader({ n, reached, title, subtitle, back, comparePhase
   )
 }
 
-export function Aside({ icon: Icon, title, note, rows, tone = 'info' }) {
+// sticky=false when stacked inside a column that is sticky itself (nested sticky asides overlap).
+export function Aside({ icon: Icon, title, note, rows, tone = 'info', sticky = true, children }) {
   return (
-    <aside className="flex flex-col gap-3.5 rounded-card bg-card p-6 shadow-card lg:sticky lg:top-6">
+    <aside className={`flex flex-col gap-3.5 rounded-card bg-card p-6 shadow-card${sticky ? ' lg:sticky lg:top-6' : ''}`}>
       <div className="flex items-center gap-2.5">
         <Icon className="size-5 text-primary" aria-hidden />
         <span className="text-base font-extrabold">{title}</span>
       </div>
+      {children}
       {rows?.length > 0 && <SummaryRows size="sm" rows={rows} />}
       {note && <p className={`rounded-xl px-3.5 py-3 text-[13px] leading-5 font-medium ${tone === 'warn' ? 'bg-warning-bg text-warning' : 'bg-secondary text-ink-2'}`}>{note}</p>}
     </aside>

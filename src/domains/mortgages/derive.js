@@ -58,7 +58,7 @@ export function healthScore({ dtiRatio, ltvRatio, mode, daysUntilFixedEnd, paidR
   const components = [
     { key: 'dti', name: 'Beban cicilan', score: dtiRatio == null ? null : band(dtiRatio, [[0.3, 90], [0.35, 75], [0.4, 62], [0.5, 40], [Infinity, 20]]) },
     { key: 'ltv', name: 'Nilai properti', score: ltvRatio == null ? null : band(ltvRatio, [[0.5, 90], [0.7, 75], [0.8, 60], [1, 40], [Infinity, 20]]) },
-    { key: 'rate', name: 'Risiko bunga', score: mode === 'floating' ? 50 : band(daysUntilFixedEnd ?? Infinity, [[90, 58], [365, 75], [Infinity, 90]]) },
+    { key: 'rate', name: 'Risiko bunga', score: mode == null ? null : mode === 'floating' ? 50 : band(daysUntilFixedEnd ?? Infinity, [[90, 58], [365, 75], [Infinity, 90]]) },
     { key: 'progress', name: 'Progres pinjaman', score: Math.min(100, Math.round(50 + 70 * paidRatio)) },
   ]
   const known = components.filter((c) => c.score !== null)

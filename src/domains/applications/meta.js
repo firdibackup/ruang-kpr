@@ -1,7 +1,7 @@
 import { dayMonth } from '@/lib/format'
 
 export const PRIMARY_STEPS = ['Data Diri', 'Pekerjaan & Penghasilan', 'Properti', 'Pinjaman', 'Upload Dokumen', 'Bandingkan Program Bank', 'Review & Submit']
-export const TAKEOVER_STEPS = ['Profil & pekerjaan', 'KPR lama', 'Tujuan', 'Properti', 'Kemampuan bayar', 'Dokumen', 'Review']
+export const TAKEOVER_STEPS = ['Profil & pekerjaan', 'KPR lama', 'Kemampuan bayar', 'Properti', 'Tujuan', 'Dokumen', 'Review']
 
 export const productName = (app) => (app.productType === 'primary' ? 'KPR Primary' : app.optimizationMode === 'topup' ? 'Take Over + Top-up' : 'Take Over')
 export const stepsOf = (app) => (app.productType === 'primary' ? PRIMARY_STEPS : TAKEOVER_STEPS)

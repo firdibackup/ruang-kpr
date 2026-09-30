@@ -29,6 +29,7 @@ function useTween(target, ms = 700) {
 
 // Linear wizard progress (artifact C12) with a percent readout. `current` is the step on screen, `reached`
 // the furthest saved step (both 1-based), so stepping back to edit never lowers the saved percent.
+// A fractional `reached` (e.g. 1.5) marks a saved sub-step inside a step.
 export function WizardProgress({ label, steps, current, reached = current, saving, savedLabel = 'Tersimpan otomatis tiap klik Simpan & Lanjutkan' }) {
   const top = Math.max(current, reached)
   const filled = useTween(top - 1) // finished steps, animated; drives both the number and the bar
@@ -61,10 +62,12 @@ export function WizardProgress({ label, steps, current, reached = current, savin
           const state = n === current ? 'current' : n < top ? 'done' : 'todo'
           return (
             <li key={s} className="flex min-w-0 flex-col gap-2" aria-current={state === 'current' ? 'step' : undefined}>
-              <span className={cn('relative h-1.5 overflow-hidden rounded-full', state === 'current' && n === top ? 'bg-step-current' : 'bg-border')}>
+              {/* Current step reads as "you are here" even when revisited (fully filled): thicker bar
+                  (negative margin keeps labels aligned) + primary label. */}
+              <span className={cn('relative overflow-hidden rounded-full', state === 'current' ? '-my-0.5 h-2.5' : 'h-1.5', state === 'current' && n === Math.floor(top) ? 'bg-step-current' : 'bg-border')}>
                 <span className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${Math.min(1, Math.max(0, filled - i)) * 100}%` }} />
               </span>
-              <span className={cn('hidden text-[11px] leading-tight md:block', state === 'current' ? 'font-extrabold text-foreground' : state === 'done' ? 'font-semibold text-foreground' : 'font-semibold text-muted-foreground')}>
+              <span className={cn('hidden text-[11px] leading-tight md:block', state === 'current' ? 'font-extrabold text-primary' : state === 'done' ? 'font-semibold text-foreground' : 'font-semibold text-muted-foreground')}>
                 {s}
                 <span className="sr-only">{state === 'done' ? ' (selesai)' : state === 'current' ? ' (langkah saat ini)' : ''}</span>
               </span>

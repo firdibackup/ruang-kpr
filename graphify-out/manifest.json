@@ -25,9 +25,9 @@
     "semantic_hash": "6000af6151a1975e9c2f0a8be863db1b"
   },
   "src/app/App.jsx": {
-    "mtime": 1790654764.3193088,
-    "ast_hash": "2e8553a781bfae91ec6114543756c4a2",
-    "semantic_hash": "2e8553a781bfae91ec6114543756c4a2"
+    "mtime": 1790737511.5068393,
+    "ast_hash": "7a4dca03e66215c2c61b24ca8786b0cd",
+    "semantic_hash": "7a4dca03e66215c2c61b24ca8786b0cd"
   },
   "src/app/DevPanel.jsx": {
     "mtime": 1790654835.0578897,
@@ -65,9 +65,9 @@
     "semantic_hash": "bfc0409ab937c6385579d7c2fcb5a399"
   },
   "src/components/layout/AppShell.jsx": {
-    "mtime": 1790656387.4709709,
-    "ast_hash": "dde0944c5731cc2cb179ceb65cca2f8a",
-    "semantic_hash": "dde0944c5731cc2cb179ceb65cca2f8a"
+    "mtime": 1790671578.1126997,
+    "ast_hash": "57631a5bd81cacdc2cd2223550e5dfae",
+    "semantic_hash": "57631a5bd81cacdc2cd2223550e5dfae"
   },
   "src/components/shared/HouseIllustration.jsx": {
     "mtime": 1790654476.7366838,
@@ -85,19 +85,19 @@
     "semantic_hash": "654d5c24869fc9727556b772287c4787"
   },
   "src/components/shared/fields.jsx": {
-    "mtime": 1790654321.9904113,
-    "ast_hash": "b757d475e6c08c3160cf8d6016720313",
-    "semantic_hash": "b757d475e6c08c3160cf8d6016720313"
+    "mtime": 1790666125.0824018,
+    "ast_hash": "37372d8445fa3244ce81ed18e49e3be2",
+    "semantic_hash": "37372d8445fa3244ce81ed18e49e3be2"
   },
   "src/components/shared/progress.jsx": {
-    "mtime": 1790654396.6302826,
-    "ast_hash": "629eeaf020cad0b1f01c4c4a1a0ee48e",
-    "semantic_hash": "629eeaf020cad0b1f01c4c4a1a0ee48e"
+    "mtime": 1790751509.3313935,
+    "ast_hash": "4b383724923dec7198a5b2f68fd8fbfc",
+    "semantic_hash": "4b383724923dec7198a5b2f68fd8fbfc"
   },
   "src/components/shared/ui.jsx": {
-    "mtime": 1790654361.238875,
-    "ast_hash": "5a0465867719c220785cbd520392a494",
-    "semantic_hash": "5a0465867719c220785cbd520392a494"
+    "mtime": 1790678795.0208457,
+    "ast_hash": "993f8915ca82706d9c9543fb923ba918",
+    "semantic_hash": "993f8915ca82706d9c9543fb923ba918"
   },
   "src/components/ui/alert-dialog.jsx": {
     "mtime": 1790653215.075705,
@@ -200,24 +200,24 @@
     "semantic_hash": "bc1ccd3262b9c87d95f6ef0b8a6f5951"
   },
   "src/data/mockApi.js": {
-    "mtime": 1790655698.5305476,
-    "ast_hash": "e81076680e59cb20a3d0f46ce75d9c2d",
-    "semantic_hash": "e81076680e59cb20a3d0f46ce75d9c2d"
+    "mtime": 1790664831.821647,
+    "ast_hash": "8833aa92747f7e69e19340ef4d6939bb",
+    "semantic_hash": "8833aa92747f7e69e19340ef4d6939bb"
   },
   "src/data/mockApi.test.js": {
-    "mtime": 1790654206.9255848,
-    "ast_hash": "3be97babd90c5ccce0636b064cf7c4ac",
-    "semantic_hash": "3be97babd90c5ccce0636b064cf7c4ac"
+    "mtime": 1790664831.82358,
+    "ast_hash": "1b1f57912671740d6d0664ffa0685a09",
+    "semantic_hash": "1b1f57912671740d6d0664ffa0685a09"
   },
   "src/data/mockDb.js": {
-    "mtime": 1790653956.850115,
+    "mtime": 1790653957.8501153,
     "ast_hash": "cec3e4461ccfec54e523a746834d45a1",
     "semantic_hash": "cec3e4461ccfec54e523a746834d45a1"
   },
   "src/data/seed.js": {
-    "mtime": 1790654171.9978087,
-    "ast_hash": "74c68461a4acbfd5c5df0633c07184a7",
-    "semantic_hash": "74c68461a4acbfd5c5df0633c07184a7"
+    "mtime": 1790664831.8226604,
+    "ast_hash": "d77c8fe9cb34c18749e50a41eca6d3bc",
+    "semantic_hash": "d77c8fe9cb34c18749e50a41eca6d3bc"
   },
   "src/domains/activity/ActivityPage.jsx": {
     "mtime": 1790656311.5222394,
@@ -235,14 +235,14 @@
     "semantic_hash": "aabd5b5bae51b80f212eed20cd82268d"
   },
   "src/domains/applications/PrimaryCompare.jsx": {
-    "mtime": 1790655132.1983867,
-    "ast_hash": "b33e099747bfb4fb459c086b4fe59369",
-    "semantic_hash": "b33e099747bfb4fb459c086b4fe59369"
+    "mtime": 1790678723.5074654,
+    "ast_hash": "16b96b3897e2e9ef6233c2ff4ada6c87",
+    "semantic_hash": "16b96b3897e2e9ef6233c2ff4ada6c87"
   },
   "src/domains/applications/PrimaryDetailsStep.jsx": {
-    "mtime": 1790655077.403987,
-    "ast_hash": "be379add437e9d0e76cbb5cedd78201a",
-    "semantic_hash": "be379add437e9d0e76cbb5cedd78201a"
+    "mtime": 1790751724.3982444,
+    "ast_hash": "99cfd54cbcf534dc65a39b1ad5a315f5",
+    "semantic_hash": "99cfd54cbcf534dc65a39b1ad5a315f5"
   },
   "src/domains/applications/PrimarySuccess.jsx": {
     "mtime": 1790655159.8657503,
@@ -250,29 +250,29 @@
     "semantic_hash": "d76655e30b76cca66f78a0dae20ea9d0"
   },
   "src/domains/applications/PrimaryWizard.jsx": {
-    "mtime": 1790657165.1844354,
-    "ast_hash": "ebba8d7da79eed26a66195d0b5ef326f",
-    "semantic_hash": "ebba8d7da79eed26a66195d0b5ef326f"
+    "mtime": 1790751592.9962084,
+    "ast_hash": "194a1ed284ca780422bd3d38b9027b07",
+    "semantic_hash": "194a1ed284ca780422bd3d38b9027b07"
   },
   "src/domains/applications/RejectedActions.jsx": {
-    "mtime": 1790654614.1578305,
-    "ast_hash": "15a9208e9530e23d9fa3fb58f29c6b1d",
-    "semantic_hash": "15a9208e9530e23d9fa3fb58f29c6b1d"
+    "mtime": 1790664817.2279837,
+    "ast_hash": "f756bba8127fafe0b2e0d6349d1f0730",
+    "semantic_hash": "f756bba8127fafe0b2e0d6349d1f0730"
   },
   "src/domains/applications/meta.js": {
-    "mtime": 1790654604.719461,
-    "ast_hash": "f678702f815a120c1894c3163c85c571",
-    "semantic_hash": "f678702f815a120c1894c3163c85c571"
+    "mtime": 1790664817.2279837,
+    "ast_hash": "daf5c0f64b7159a61854ffe9b90c524e",
+    "semantic_hash": "daf5c0f64b7159a61854ffe9b90c524e"
   },
   "src/domains/applications/validation.js": {
-    "mtime": 1790654942.1810126,
-    "ast_hash": "e8fa74a926c144b4a1bcfe071db4f2ae",
-    "semantic_hash": "e8fa74a926c144b4a1bcfe071db4f2ae"
+    "mtime": 1790664687.0016487,
+    "ast_hash": "2c68c29488493958556c4ab456a95691",
+    "semantic_hash": "2c68c29488493958556c4ab456a95691"
   },
   "src/domains/applications/validation.test.js": {
-    "mtime": 1790654949.8941383,
-    "ast_hash": "693f91bbd3a111483eb8fcfbf7f5e016",
-    "semantic_hash": "693f91bbd3a111483eb8fcfbf7f5e016"
+    "mtime": 1790664687.0016487,
+    "ast_hash": "12d9ebf1d164c6c8e7d1fd8d9fdd6a1f",
+    "semantic_hash": "12d9ebf1d164c6c8e7d1fd8d9fdd6a1f"
   },
   "src/domains/explore/ExplorePages.jsx": {
     "mtime": 1790655726.1303337,
@@ -280,14 +280,14 @@
     "semantic_hash": "a79c449e9dcf5eb48081c2fe3836933c"
   },
   "src/domains/home/HomePage.jsx": {
-    "mtime": 1790656387.4709709,
-    "ast_hash": "e8a9e73b9fcef9fb731f63eb33ab3876",
-    "semantic_hash": "e8a9e73b9fcef9fb731f63eb33ab3876"
+    "mtime": 1790751614.290127,
+    "ast_hash": "985558959eeeabc47ce072424c0953bb",
+    "semantic_hash": "985558959eeeabc47ce072424c0953bb"
   },
   "src/domains/home/MonitoringDashboard.jsx": {
-    "mtime": 1790656534.7547288,
-    "ast_hash": "9d880c595155ec18a2f80b77a83f44d0",
-    "semantic_hash": "9d880c595155ec18a2f80b77a83f44d0"
+    "mtime": 1790671566.7846177,
+    "ast_hash": "e5c8089a70a5597d515543fdc159206a",
+    "semantic_hash": "e5c8089a70a5597d515543fdc159206a"
   },
   "src/domains/home/selectHomeState.js": {
     "mtime": 1790653792.1741824,
@@ -295,14 +295,14 @@
     "semantic_hash": "5fa6f8466789fe1ee767179b319e6e32"
   },
   "src/domains/mortgages/AmortizationPages.jsx": {
-    "mtime": 1790655631.1031303,
-    "ast_hash": "c1b343e3a055d6ffafdee62e4e837f99",
-    "semantic_hash": "c1b343e3a055d6ffafdee62e4e837f99"
+    "mtime": 1790671517.1947904,
+    "ast_hash": "6ed2cbce17bdaf06b05e9cbf85ff4c74",
+    "semantic_hash": "6ed2cbce17bdaf06b05e9cbf85ff4c74"
   },
   "src/domains/mortgages/HealthPage.jsx": {
-    "mtime": 1790655652.4817102,
-    "ast_hash": "19d585d595ba7c4f80434aa5e04e5800",
-    "semantic_hash": "19d585d595ba7c4f80434aa5e04e5800"
+    "mtime": 1790671566.7856107,
+    "ast_hash": "1a0d47749082801c10e979b593027540",
+    "semantic_hash": "1a0d47749082801c10e979b593027540"
   },
   "src/domains/mortgages/MonitoringPages.jsx": {
     "mtime": 1790655343.3871348,
@@ -310,14 +310,14 @@
     "semantic_hash": "8eabd3729a598e58fc5ba1173afef88a"
   },
   "src/domains/mortgages/MortgageSetupWizard.jsx": {
-    "mtime": 1790656397.6815383,
-    "ast_hash": "6f2acf03cdfbbe1b9213723a47238370",
-    "semantic_hash": "6f2acf03cdfbbe1b9213723a47238370"
+    "mtime": 1790751513.5484185,
+    "ast_hash": "1a208f122f890481235b6701b100b3b4",
+    "semantic_hash": "1a208f122f890481235b6701b100b3b4"
   },
   "src/domains/mortgages/MyKprLayout.jsx": {
-    "mtime": 1790655534.8701916,
-    "ast_hash": "93d93a7901e00639db299715e2665a06",
-    "semantic_hash": "93d93a7901e00639db299715e2665a06"
+    "mtime": 1790678304.3229835,
+    "ast_hash": "a3669182f4077614f595be40cc85cfc6",
+    "semantic_hash": "a3669182f4077614f595be40cc85cfc6"
   },
   "src/domains/mortgages/MyKprTabs.jsx": {
     "mtime": 1790656387.4643788,
@@ -355,9 +355,9 @@
     "semantic_hash": "d33d3d1acd15d0131e32d32cb84db7bf"
   },
   "src/domains/optimize/OldLoanPages.jsx": {
-    "mtime": 1790655929.2357676,
-    "ast_hash": "213aaf057f26f8e4be49255b6be06698",
-    "semantic_hash": "213aaf057f26f8e4be49255b6be06698"
+    "mtime": 1790751519.1210022,
+    "ast_hash": "adfbe609ca759bb7176bf7cfb4e52657",
+    "semantic_hash": "adfbe609ca759bb7176bf7cfb4e52657"
   },
   "src/domains/optimize/OptimizeIntro.jsx": {
     "mtime": 1790655778.2619362,
@@ -365,19 +365,19 @@
     "semantic_hash": "208329f0b290bd0c20744304d2753120"
   },
   "src/domains/optimize/OptimizeSteps.jsx": {
-    "mtime": 1790657165.1854432,
-    "ast_hash": "dd80e5abdb02cdc0c8d03d20265465e0",
-    "semantic_hash": "dd80e5abdb02cdc0c8d03d20265465e0"
+    "mtime": 1790752532.5616038,
+    "ast_hash": "6cbd1662500cb3f442febad2a7e693f1",
+    "semantic_hash": "6cbd1662500cb3f442febad2a7e693f1"
   },
   "src/domains/optimize/ProgramPages.jsx": {
-    "mtime": 1790656048.1449063,
-    "ast_hash": "7909897c6b2d5aea42b04b88b95cc28a",
-    "semantic_hash": "7909897c6b2d5aea42b04b88b95cc28a"
+    "mtime": 1790671517.2808003,
+    "ast_hash": "74ff585cab05e1e9d39f68f0bc3229d2",
+    "semantic_hash": "74ff585cab05e1e9d39f68f0bc3229d2"
   },
   "src/domains/optimize/shared.jsx": {
-    "mtime": 1790655753.2289846,
-    "ast_hash": "65467c9ff3d318bc458d7d430234ed38",
-    "semantic_hash": "65467c9ff3d318bc458d7d430234ed38"
+    "mtime": 1790751516.0261083,
+    "ast_hash": "9b61ade42b9b7416b3463d4a683d2afd",
+    "semantic_hash": "9b61ade42b9b7416b3463d4a683d2afd"
   },
   "src/domains/optimize/validation.js": {
     "mtime": 1790655746.2814622,
@@ -385,9 +385,9 @@
     "semantic_hash": "3ced499ea44966342f73f4efe8f0e264"
   },
   "src/domains/profile/ProfilePages.jsx": {
-    "mtime": 1790656356.0469723,
-    "ast_hash": "ae30506eb76912aaa06e5da4b2c6fbe7",
-    "semantic_hash": "ae30506eb76912aaa06e5da4b2c6fbe7"
+    "mtime": 1790671542.4982758,
+    "ast_hash": "c154f19881b38723e0e806dc2c0f6dee",
+    "semantic_hash": "c154f19881b38723e0e806dc2c0f6dee"
   },
   "src/domains/session/AuthPages.jsx": {
     "mtime": 1790654512.7656207,
@@ -410,7 +410,7 @@
     "semantic_hash": "d497ab9d4e41fc73588426805f983855"
   },
   "src/lib/hooks.js": {
-    "mtime": 1790656387.4643788,
+    "mtime": 1790656388.4643793,
     "ast_hash": "be899ecf635ec0843fc568e8a8a01d52",
     "semantic_hash": "be899ecf635ec0843fc568e8a8a01d52"
   },
@@ -440,14 +440,14 @@
     "semantic_hash": "f6ea0f72e8f7644638fe9df2ccb0a0f0"
   },
   "tests/e2e/primary-flow.spec.js": {
-    "mtime": 1790656898.8632085,
-    "ast_hash": "83ef1e11dc195c10198a6361f857be1b",
-    "semantic_hash": "83ef1e11dc195c10198a6361f857be1b"
+    "mtime": 1790751841.1408088,
+    "ast_hash": "b4a299e246968e46f4836afa81bd9e9f",
+    "semantic_hash": "b4a299e246968e46f4836afa81bd9e9f"
   },
   "tests/e2e/takeover-flow.spec.js": {
-    "mtime": 1790657302.3218713,
-    "ast_hash": "6ba41ca1725277947d29d72110bfb782",
-    "semantic_hash": "6ba41ca1725277947d29d72110bfb782"
+    "mtime": 1790737515.831776,
+    "ast_hash": "75dc5f2a1c2aeee933fdc2db944027c9",
+    "semantic_hash": "75dc5f2a1c2aeee933fdc2db944027c9"
   },
   "vite.config.js": {
     "mtime": 1790653101.730737,
@@ -455,17 +455,17 @@
     "semantic_hash": "9b7a59ee336c372e7871eb2ddf1ede6f"
   },
   "CLAUDE.md": {
-    "mtime": 1790657382.0949502,
-    "ast_hash": "3994e48406f416696fa7d608c9a1487f",
-    "semantic_hash": "3994e48406f416696fa7d608c9a1487f"
+    "mtime": 1790754874.162989,
+    "ast_hash": "bc0533344b32db9b5d9608bb9c772dc3",
+    "semantic_hash": "bc0533344b32db9b5d9608bb9c772dc3"
   },
   "RuangKPR App (Standalone).html": {
-    "mtime": 1790652258.2597675,
+    "mtime": 1790652259.259768,
     "ast_hash": "da0571dd53f1c58fef87feee653ea359",
     "semantic_hash": "da0571dd53f1c58fef87feee653ea359"
   },
   "index.html": {
-    "mtime": 1790653101.7554822,
+    "mtime": 1790653103.7554815,
     "ast_hash": "6318f219fe5e55e2aa127917f23a5edd",
     "semantic_hash": "6318f219fe5e55e2aa127917f23a5edd"
   },
@@ -508,5 +508,70 @@
     "mtime": 1790653101.7832818,
     "ast_hash": "440bac1033aa45de2a86b7b44055dbc3",
     "semantic_hash": "440bac1033aa45de2a86b7b44055dbc3"
+  },
+  ".claude/commands/build.md": {
+    "mtime": 1790754874.1597667,
+    "ast_hash": "b10efd06f9ded50e853f30c87d9cfd1b",
+    "semantic_hash": "b10efd06f9ded50e853f30c87d9cfd1b"
+  },
+  ".claude/commands/fix.md": {
+    "mtime": 1790754874.1608002,
+    "ast_hash": "f9a08c3676dc753fa82342871dcbed5c",
+    "semantic_hash": "f9a08c3676dc753fa82342871dcbed5c"
+  },
+  ".claude/commands/review.md": {
+    "mtime": 1790754874.1618378,
+    "ast_hash": "faefcea259de72413c937b8bc75b6dca",
+    "semantic_hash": "faefcea259de72413c937b8bc75b6dca"
+  },
+  "public/card-overview.webp": {
+    "mtime": 1790678519.0341096,
+    "ast_hash": "a8de8cc356d3e760438fe0d8455ebc04",
+    "semantic_hash": "a8de8cc356d3e760438fe0d8455ebc04"
+  },
+  "public/icon-service/256/kpr-primary.webp": {
+    "mtime": 1790676331.5781105,
+    "ast_hash": "e49db8478b50d371a50055994190fec4",
+    "semantic_hash": "e49db8478b50d371a50055994190fec4"
+  },
+  "public/icon-service/256/multiguna.webp": {
+    "mtime": 1790676332.411466,
+    "ast_hash": "a261542f9572e82fe6ef752366888cc3",
+    "semantic_hash": "a261542f9572e82fe6ef752366888cc3"
+  },
+  "public/icon-service/256/refinancing.webp": {
+    "mtime": 1790676332.1160035,
+    "ast_hash": "51f94a225ecde0241f9e3cba0b6c8825",
+    "semantic_hash": "51f94a225ecde0241f9e3cba0b6c8825"
+  },
+  "public/icon-service/256/take-over.webp": {
+    "mtime": 1790676331.8501408,
+    "ast_hash": "0acae554d6d838c48b69523d3162eb6b",
+    "semantic_hash": "0acae554d6d838c48b69523d3162eb6b"
+  },
+  "public/icon-service/kpr-primary.webp": {
+    "mtime": 1790675778.0322783,
+    "ast_hash": "43876689e5ded4eb853fb5f2b1281ada",
+    "semantic_hash": "43876689e5ded4eb853fb5f2b1281ada"
+  },
+  "public/icon-service/multiguna.webp": {
+    "mtime": 1790675778.331027,
+    "ast_hash": "95528d11910d93790be99f5addca55a4",
+    "semantic_hash": "95528d11910d93790be99f5addca55a4"
+  },
+  "public/icon-service/refinancing.webp": {
+    "mtime": 1790675777.7518976,
+    "ast_hash": "ee02c343d16ffcd3b1d43229cebf7f5d",
+    "semantic_hash": "ee02c343d16ffcd3b1d43229cebf7f5d"
+  },
+  "public/icon-service/take-over.webp": {
+    "mtime": 1790675778.549915,
+    "ast_hash": "5e23aea30d7ba1f95d30d6ad8b6b2f7f",
+    "semantic_hash": "5e23aea30d7ba1f95d30d6ad8b6b2f7f"
+  },
+  "public/no-kpr-page.webp": {
+    "mtime": 1790678123.2594967,
+    "ast_hash": "b9dfe147db51ad8eb435ef801dc3a134",
+    "semantic_hash": "b9dfe147db51ad8eb435ef801dc3a134"
   }
 }
