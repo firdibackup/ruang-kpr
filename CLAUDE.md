@@ -57,3 +57,46 @@ Routes follow doc 02 (`/`, `/apply/primary/:step`, `/monitoring/setup/:step`, `/
 ## Visual baseline
 
 Tokens live in `src/styles/globals.css` (mapped onto shadcn variables plus status/ink colors, `rounded-card` = 24px, `shadow-card`). Font Plus Jakarta Sans, primary `#003DA5`, background `#F4F6FA`, brand red `#DC1C2E` ("Command Center"). Desktop sidebar ≥1024px, bottom nav below; touch targets ≥44px. To inspect the artifact: `<script type="__bundler/manifest">` is JSON of UUID → `{ mime, compressed, data }` (base64, gzipped if `compressed`); decode with `gzip.decompress(base64.b64decode(data))`. It holds three module pages (Pengajuan, Pantau, TakeOver) plus the shell template in `<script type="__bundler/template">`. The onboarding photo asset is not in the bundle; `HouseIllustration.jsx` stands in for it.
+
+
+## AI Coding Workflow
+
+### Simplicity / Ponytail Principles
+
+When implementing changes, prefer the smallest solution that fits the existing architecture.
+
+- Reuse existing components, hooks, utilities, domain rules, and data boundaries before creating new ones.
+- Do not introduce a new abstraction, dependency, state-management library, data-fetching library, validation library, or utility layer unless the task genuinely requires it.
+- Do not create wrapper components/functions that only rename or forward existing behavior.
+- Prefer native React, Vite, browser APIs, and existing project utilities.
+- Keep changes local and focused; do not refactor unrelated code.
+- Before adding a new file, check whether an existing file is the appropriate home.
+- Before adding a dependency, check whether the repository already provides the capability.
+- Preserve the existing mock-first architecture and API boundary.
+- Never bypass `src/data/api.js` from UI code.
+- Never move persistence into components; `mockDb.js` remains the only localStorage boundary.
+
+### UI / UX / Impeccable Principles
+
+For frontend work, treat the existing visual baseline in this file as authoritative.
+
+- Inspect existing UI components and `src/styles/globals.css` before creating new visual patterns.
+- Reuse shadcn/Radix components and existing shared components where possible.
+- Preserve Plus Jakarta Sans, existing color tokens, spacing language, 24px card radius, and navigation patterns unless the task explicitly changes them.
+- Maintain mobile-first behavior and the desktop breakpoint at 1024px.
+- Keep touch targets at least 44px.
+- Check loading, empty, error, and disabled states for new interactive UI.
+- Maintain WCAG-conscious contrast and keyboard accessibility.
+- Avoid arbitrary colors, gradients, excessive shadows, decorative animation, or new visual patterns without a clear product reason.
+- Do not redesign unrelated screens while implementing a feature.
+
+### Definition of Done
+
+After implementation:
+
+1. Run `npm run lint`.
+2. Run the most relevant Vitest tests for changed logic.
+3. Run `npm run build` for production-facing changes.
+4. Run the relevant Playwright test when a user journey or routing behavior changes.
+5. Review the diff and remove unnecessary code or files.
+6. Report any check that could not be run rather than claiming it passed.
