@@ -12,7 +12,7 @@ import { CheckboxField } from '@/components/shared/fields'
 import { ConfirmDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
 import { WizardProgress } from '@/components/shared/progress'
 import { UploadRow } from '@/components/shared/UploadRow'
-import { Chip, Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner, SummaryRows } from '@/components/shared/ui'
+import { Chip, Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, ProgressBar, Spinner, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
 import { PRIMARY_STEPS, productName, resumePath } from './meta'
 import { PrimaryDetailsStep } from './PrimaryDetailsStep'
@@ -58,7 +58,7 @@ export function PrimaryWizard() {
   return (
     <>
       <PageHeader title={productId ? 'Detail program' : title} subtitle={productId ? 'Simulasi cicilan' : subtitle} back={productId ? '/apply/primary/6' : back} />
-      <WizardProgress label={`Step ${n} dari ${LAST} · ${PRIMARY_STEPS[n - 1]}`} steps={PRIMARY_STEPS} current={n} />
+      <WizardProgress label={`Step ${n} dari ${LAST} · ${PRIMARY_STEPS[n - 1]}`} steps={PRIMARY_STEPS} current={n} reached={primary?.currentStep} />
       {n <= 4 && (
         <PrimaryDetailsStep
           key={n}
@@ -161,43 +161,47 @@ export function DocumentsStep({ app, onChange, fromReview, go, nextPath = '/appl
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <UnsavedChangesGuard when={uploading > 0} />
-      <Panel>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="flex min-w-0 flex-col gap-6">
+        <UnsavedChangesGuard when={uploading > 0} />
+        <Panel>
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-extrabold">Dokumen pengajuan</h2>
-            <p className="text-[13px] leading-5 text-muted-foreground">JPG, PNG, atau PDF · maks 5MB per file. File tersimpan otomatis begitu dipilih. Pratinjau dokumen tidak ditampilkan demi keamanan.</p>
+            <p className="text-[13px] leading-5 text-muted-foreground">Pratinjau dokumen tidak ditampilkan demi keamanan.</p>
           </div>
-          <div className="flex items-center gap-3.5">
-            <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary" role="status">
-              {done} dari {required.length} dokumen wajib terunggah
-            </span>
-            {import.meta.env.DEV && !complete && (
-              <button type="button" onClick={fillDemo} disabled={demoPending} className="text-xs font-bold text-muted-foreground underline">
-                {demoPending ? 'Mengisi…' : 'Isi contoh'}
-              </button>
-            )}
+          <div className="flex flex-col gap-3">
+            {docs.map((d) => (
+              <UploadRow key={d.type} doc={d} state={app.documents[d.type]} onUpload={upload(d.type)} />
+            ))}
           </div>
-        </div>
-        <div className="flex flex-col gap-3">
-          {docs.map((d) => (
-            <UploadRow key={d.type} doc={d} state={app.documents[d.type]} onUpload={upload(d.type)} />
-          ))}
-        </div>
-      </Panel>
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Button variant="neutral" onClick={() => go(fromReview ? '/apply/primary/7' : backPath)}>
-          Kembali
-        </Button>
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
-          {!complete && <span className="text-center text-xs text-muted-foreground">Upload semua dokumen wajib untuk lanjut.</span>}
-          <Button onClick={next} aria-disabled={!complete} aria-busy={saving} className={!complete ? 'bg-border text-ink-3 hover:bg-border' : ''}>
-            {saving && <Spinner />}
-            {fromReview ? 'Simpan & kembali ke Review' : 'Lanjutkan'}
+        </Panel>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button variant="neutral" onClick={() => go(fromReview ? '/apply/primary/7' : backPath)}>
+            Kembali
           </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
+            {!complete && <span className="text-center text-xs text-muted-foreground">Upload semua dokumen wajib untuk lanjut.</span>}
+            <Button onClick={next} aria-disabled={!complete} aria-busy={saving} className={!complete ? 'bg-border text-ink-3 hover:bg-border' : ''}>
+              {saving && <Spinner />}
+              {fromReview ? 'Simpan & kembali ke Review' : 'Lanjutkan'}
+            </Button>
+          </div>
         </div>
       </div>
+      {/* Same counter aside as the Take Over documents step. */}
+      <aside className="flex flex-col gap-3.5 rounded-card bg-card p-6 shadow-card xl:sticky xl:top-6">
+        <span className="text-[13px] font-extrabold text-ink-3">Dokumen wajib</span>
+        <span className="text-[30px] font-extrabold" role="status">
+          {done} <span className="text-base text-muted-foreground">dari {required.length} terunggah</span>
+        </span>
+        <ProgressBar value={(done / Math.max(1, required.length)) * 100} label="Dokumen wajib terunggah" barClassName="bg-success-strong" />
+        <p className="text-[13px] leading-5 text-ink-3">JPG, PNG, atau PDF · maks 5MB per file. File tersimpan otomatis begitu dipilih.</p>
+        {import.meta.env.DEV && !complete && (
+          <button type="button" onClick={fillDemo} disabled={demoPending} className="w-fit text-[13px] font-bold text-primary underline">
+            {demoPending ? 'Mengisi…' : 'Isi contoh'}
+          </button>
+        )}
+      </aside>
     </div>
   )
 }

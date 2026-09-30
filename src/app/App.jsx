@@ -56,6 +56,7 @@ const router = createBrowserRouter([
           { path: 'monitoring/success', element: <MonitoringSuccess /> },
           { path: 'optimize/intro', element: <OptimizeIntro /> },
           { path: 'optimize/start', element: <GoalStartPage /> },
+          { path: 'optimize/1/pekerjaan', element: <OptimizeStepPage employment /> },
           { path: 'optimize/2/estimasi', element: <OldLoanEstimatePage /> },
           { path: 'optimize/2/resmi', element: <OldLoanOfficialPage /> },
           { path: 'optimize/baseline', element: <BaselinePage /> },

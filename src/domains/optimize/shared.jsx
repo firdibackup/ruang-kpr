@@ -17,7 +17,7 @@ export function useOptimize() {
   return { ...res, snap: res.data, app: takeover, otherApp: app && !takeover ? app : null, setApp }
 }
 
-export function OptimizeHeader({ n, title, subtitle, back, comparePhase = false, saving }) {
+export function OptimizeHeader({ n, reached, title, subtitle, back, comparePhase = false, saving }) {
   return (
     <>
       <PageHeader title={title} subtitle={subtitle} back={back} />
@@ -26,6 +26,7 @@ export function OptimizeHeader({ n, title, subtitle, back, comparePhase = false,
           label={`Step ${n} dari 7 · ${comparePhase ? 'Bandingkan program' : TAKEOVER_STEPS[n - 1]}`}
           steps={TAKEOVER_STEPS}
           current={comparePhase ? 6 : n}
+          reached={reached}
           saving={saving}
         />
       )}

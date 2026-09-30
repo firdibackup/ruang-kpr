@@ -390,6 +390,27 @@ export function ArticleCard({ article: a, cta = "Baca" }) {
   );
 }
 
+// Draft progress on the blue hero: bar plus the same saved-percent readout as the wizard header.
+function HeroProgress({ value, label, className }) {
+  return (
+    <div className={`flex items-center gap-4 ${className}`}>
+      <ProgressBar
+        value={value}
+        label={label}
+        className="h-2.5 flex-1 bg-white/20"
+        barClassName="bg-white"
+      />
+      <span
+        className="tabular flex shrink-0 items-baseline leading-none font-extrabold tracking-[-0.03em]"
+        aria-hidden
+      >
+        <span className="text-[26px]">{value}</span>
+        <span className="text-sm">%</span>
+      </span>
+    </div>
+  );
+}
+
 function DraftHero({ app, onDeleted }) {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
@@ -413,11 +434,10 @@ function DraftHero({ app, onDeleted }) {
           Terakhir disimpan {dateShort(app.updatedAt)}
         </p>
       </div>
-      <ProgressBar
+      <HeroProgress
         value={stepPercent(step, steps.length)}
         label="Progres pengajuan"
-        className="max-w-[560px] bg-white/20"
-        barClassName="bg-white"
+        className="max-w-[620px]"
       />
       <div className="flex flex-wrap items-center gap-[18px]">
         <Button
@@ -468,11 +488,10 @@ function MortgageDraftHero({ mortgage, onDeleted }) {
         <p className="text-[15px] font-semibold text-white/90">
           Step {step} dari 6 — {SETUP_STEPS[step - 1]}
         </p>
-        <ProgressBar
+        <HeroProgress
           value={stepPercent(step, 6)}
           label="Progres pengaturan KPR"
-          className="h-2.5 max-w-[520px] bg-white/20"
-          barClassName="bg-white"
+          className="max-w-[580px]"
         />
       </div>
       <div className="flex flex-col items-stretch gap-2.5">

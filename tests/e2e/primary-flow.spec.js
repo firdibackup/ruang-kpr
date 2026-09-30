@@ -51,6 +51,13 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
   await expect(page).toHaveURL(/apply\/primary\/3/)
+  // Going back to edit keeps the saved progress instead of dropping it.
+  await page.getByRole('button', { name: 'Kembali', exact: true }).last().click()
+  await expect(page).toHaveURL(/apply\/primary\/2/)
+  await expect(page.getByText('29% selesai.')).toBeAttached()
+  await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
+
+  await expect(page).toHaveURL(/apply\/primary\/3/)
   await page.getByRole('radio', { name: /Rumah baru dari developer/ }).click()
   await page.getByLabel('Nama Developer').fill('PT Griya Asri')
   await page.getByLabel('Jenis Properti').selectOption('landed_house')
@@ -73,7 +80,7 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   }
   await page.reload() // resume: files and step persist
   await expect(page).toHaveURL(/apply\/primary\/5/)
-  await expect(page.getByText('4 dari 4 dokumen wajib terunggah')).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: '4 dari 4 terunggah' })).toBeVisible()
   await page.getByRole('button', { name: 'Lanjutkan' }).click()
 
   await expect(page).toHaveURL(/apply\/primary\/6$/)

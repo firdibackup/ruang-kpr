@@ -27,9 +27,11 @@ function useTween(target, ms = 700) {
   return value
 }
 
-// Linear wizard progress (artifact C12) with a percent readout. `current` is 1-based.
-export function WizardProgress({ label, steps, current, saving, savedLabel = 'Tersimpan otomatis tiap klik Simpan & Lanjutkan' }) {
-  const filled = useTween(current - 1) // finished steps, animated; drives both the number and the bar
+// Linear wizard progress (artifact C12) with a percent readout. `current` is the step on screen, `reached`
+// the furthest saved step (both 1-based), so stepping back to edit never lowers the saved percent.
+export function WizardProgress({ label, steps, current, reached = current, saving, savedLabel = 'Tersimpan otomatis tiap klik Simpan & Lanjutkan' }) {
+  const top = Math.max(current, reached)
+  const filled = useTween(top - 1) // finished steps, animated; drives both the number and the bar
   return (
     <div className="flex flex-col gap-3.5 rounded-3xl border border-border bg-card px-5 py-4 sm:px-[22px] sm:py-[18px]">
       <div className="flex items-center gap-4">
@@ -37,7 +39,7 @@ export function WizardProgress({ label, steps, current, saving, savedLabel = 'Te
           <span className="tabular min-w-[2ch] text-right text-[28px] leading-none font-extrabold tracking-[-0.03em]">{Math.round((filled / steps.length) * 100)}</span>
           <span className="text-[15px] font-extrabold">%</span>
         </span>
-        <span className="sr-only">{stepPercent(current, steps.length)}% selesai.</span>
+        <span className="sr-only">{stepPercent(top, steps.length)}% selesai.</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1 border-l border-border pl-4">
           <span className="text-[13px] font-bold text-pretty">{label}</span>
           {saving ? (
@@ -56,10 +58,10 @@ export function WizardProgress({ label, steps, current, saving, savedLabel = 'Te
       <ol className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
         {steps.map((s, i) => {
           const n = i + 1
-          const state = n < current ? 'done' : n === current ? 'current' : 'todo'
+          const state = n === current ? 'current' : n < top ? 'done' : 'todo'
           return (
             <li key={s} className="flex min-w-0 flex-col gap-2" aria-current={state === 'current' ? 'step' : undefined}>
-              <span className={cn('relative h-1.5 overflow-hidden rounded-full', state === 'current' ? 'bg-step-current' : 'bg-border')}>
+              <span className={cn('relative h-1.5 overflow-hidden rounded-full', state === 'current' && n === top ? 'bg-step-current' : 'bg-border')}>
                 <span className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${Math.min(1, Math.max(0, filled - i)) * 100}%` }} />
               </span>
               <span className={cn('hidden text-[11px] leading-tight md:block', state === 'current' ? 'font-extrabold text-foreground' : state === 'done' ? 'font-semibold text-foreground' : 'font-semibold text-muted-foreground')}>

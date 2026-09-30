@@ -67,7 +67,7 @@ export function MortgageSetupWizard() {
   return (
     <>
       <PageHeader title={edit ? 'Edit Data KPR' : 'Tambahkan KPR'} subtitle={SETUP_TITLES[n - 1]} back={backTo} />
-      {!editingActive && <WizardProgress label={`Step ${n}/6 — ${SETUP_STEPS[n - 1]}`} steps={SETUP_STEPS} current={n} savedLabel="Tersimpan setiap klik Simpan & Lanjutkan" />}
+      {!editingActive && <WizardProgress label={`Step ${n}/6 — ${SETUP_STEPS[n - 1]}`} steps={SETUP_STEPS} current={n} reached={m.setupStep} savedLabel="Tersimpan setiap klik Simpan & Lanjutkan" />}
       {editingActive && (
         <Notice tone="info" title="Kamu sedang mengubah KPR aktif">
           Perubahan sisa pokok, bunga, atau tenor akan menghitung ulang proyeksi pembayaran, reminder, dan KPR Health.
