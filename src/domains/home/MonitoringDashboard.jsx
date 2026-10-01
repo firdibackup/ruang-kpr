@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeftRightIcon, ArrowRightIcon, CalendarClockIcon, CalendarIcon, ChevronRightIcon, ClockIcon, HouseIcon, LandmarkIcon, PercentIcon, RefreshCwIcon, SparklesIcon, TriangleAlertIcon, WalletIcon } from 'lucide-react'
+import { ArrowLeftRightIcon, ArrowRightIcon, CalendarClockIcon, CalendarIcon, ChevronRightIcon, CircleCheckIcon, ClockIcon, HouseIcon, LandmarkIcon, PercentIcon, RefreshCwIcon, SparklesIcon, TriangleAlertIcon, WalletIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { useResource } from '@/lib/hooks'
 import { daysLabel, monthName, percentBps, rupiah, rupiahShort, signedRupiah, tenorLabel, dateLong, dateShort, labelOf, CITIES } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { FormDialog } from '@/components/shared/dialogs'
+import { MarkPaidDialog } from '@/domains/mortgages/MyKprTabs'
 import { Chip, Disclaimer, EstimateTag, HeroCard, IconBox, Notice, Panel, ProgressBar, Skeleton, SummaryRows } from '@/components/shared/ui'
 
 export const HEALTH_SENTENCE = {
@@ -35,10 +36,11 @@ export function HealthRing({ health, size = 112 }) {
   )
 }
 
-export function MonitoringDashboard({ mortgage: m, derived: d }) {
+export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged }) {
   const navigate = useNavigate()
   const { data: explore, loading: exploreLoading } = useResource(() => api.explore.get(), [m.id, m.version])
   const [repricing, setRepricing] = useState(false)
+  const [marking, setMarking] = useState(false)
   const fi = d.floatingImpact
   const weakest = [...d.health.components].filter((c) => c.score !== null).sort((a, b) => a.score - b.score)[0]
   const opp = explore?.opportunity
@@ -204,9 +206,17 @@ export function MonitoringDashboard({ mortgage: m, derived: d }) {
               <CalendarClockIcon className="size-4" aria-hidden />
               {dateLong(d.nextDue)} · {daysLabel(d.daysToNextDue)}
             </span>
-            <Link to="/my-kpr/payment" className="flex min-h-11 w-fit items-center text-sm font-bold text-primary">
-              Lihat detail
-            </Link>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1">
+              {d.payableDues.includes(d.nextDue) && (
+                <Button size="md" onClick={() => setMarking(true)}>
+                  <CircleCheckIcon aria-hidden />
+                  Tandai Sudah Dibayar
+                </Button>
+              )}
+              <Link to="/my-kpr/payment" className="flex min-h-11 w-fit items-center text-sm font-bold text-primary">
+                Lihat detail
+              </Link>
+            </div>
           </Panel>
 
           <section className="order-4 flex flex-col gap-4 rounded-card border border-[#cfdcf3] bg-[#f3f7fe] p-6 xl:order-none" aria-labelledby="opp-title">
@@ -275,6 +285,8 @@ export function MonitoringDashboard({ mortgage: m, derived: d }) {
           </Panel>
         </div>
       </div>
+
+      {marking && <MarkPaidDialog onOpenChange={() => setMarking(false)} m={m} dueOptions={d.payableDues} initialDue={d.nextDue} clock={clock} onDone={onChanged} />}
 
       <FormDialog open={repricing} onOpenChange={setRepricing} title="Minta repricing" description="Repricing adalah penyesuaian bunga di bank yang sama.">
         <p className="text-sm leading-[21px] text-ink-3">Hubungi bank kamu untuk menanyakan opsi repricing sebelum masa fixed berakhir. Pengajuan repricing lewat RuangKPR belum tersedia pada versi ini.</p>

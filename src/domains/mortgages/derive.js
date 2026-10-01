@@ -1,5 +1,5 @@
 // Pure derivations for an active mortgage (no storage, caller passes `asOf`).
-import { addMonths, daysUntil, nextDueDate } from '@/calculations/dates'
+import { addDays, addMonths, daysUntil, nextDueDate } from '@/calculations/dates'
 import { calculateDti, calculateFloatingImpact, calculatePropertyMetrics, generateAmortizationSchedule } from '@/calculations/finance'
 
 export const WARNING_WINDOW_DAYS = 90
@@ -80,6 +80,14 @@ export function nextUnpaidDue(m, asOf) {
   return due
 }
 
+// Months shown in payment history around the next due, and the ones the user may mark paid now
+// (last month if still unpaid, up to ~1 month ahead).
+function paymentWindow(m, asOf, nextDue) {
+  const paid = new Set((m.payments ?? []).filter((p) => p.status === 'paid').map((p) => p.dueDate))
+  const dueWindow = [addMonths(nextDue, -1, m.dueDay), nextDue, addMonths(nextDue, 1, m.dueDay)].filter((x) => x > m.startDate)
+  return { dueWindow, payableDues: dueWindow.filter((x) => !paid.has(x) && x <= addDays(asOf, 31)) }
+}
+
 export function deriveMortgage(m, asOf) {
   const { mode, daysUntilFixedEnd } = rateMode(m, asOf)
   const nextDue = nextUnpaidDue(m, asOf)
@@ -106,6 +114,7 @@ export function deriveMortgage(m, asOf) {
     milestone: mode === 'warning' ? nextMilestone(daysUntilFixedEnd) : null,
     nextDue,
     daysToNextDue: daysUntil({ fromDate: asOf, targetDate: nextDue }),
+    ...paymentWindow(m, asOf, nextDue),
     schedule,
     scheduleMissing: missing,
     scheduleError: error,

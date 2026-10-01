@@ -699,12 +699,15 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         db.mortgages = db.mortgages.filter((x) => x.id !== id)
         return { deleted: true }
       }),
-      markPaid: call('mortgages.markPaid', (db, id, { dueDate, amount, paidAt }) => {
+      // `proof` is optional file metadata ({ name, size, type }); file bytes are never stored.
+      markPaid: call('mortgages.markPaid', (db, id, { dueDate, amount, paidAt, proof }) => {
         const m = findMortgage(db, id)
         if (!(amount > 0)) fail('VALIDATION_FAILED', 'Nominal harus lebih dari 0.', 400, { fieldErrors: [{ field: 'amount', message: 'Nominal harus lebih dari 0.' }] })
         if (!parseIsoDate(paidAt) || paidAt > db.clock) fail('VALIDATION_FAILED', 'Tanggal bayar tidak valid.', 400, { fieldErrors: [{ field: 'paidAt', message: 'Tanggal bayar tidak boleh di masa depan.' }] })
+        if (proof && !ACCEPTED_EXTENSIONS.test(proof.name)) fail('FILE_TYPE_UNSUPPORTED', 'Format tidak didukung. Gunakan JPG, PNG, atau PDF.', 415)
+        if (proof && proof.size > MAX_FILE_BYTES) fail('FILE_TOO_LARGE', 'Ukuran file lebih dari 5MB. Kompres dulu, lalu coba lagi.', 413)
         if (m.payments.some((p) => p.dueDate === dueDate && p.status === 'paid')) fail('DUPLICATE_PAYMENT_RECORD', 'Pembayaran bulan ini sudah ditandai.', 409)
-        const payment = { id: nextId(db, 'pay'), dueDate, amount, status: 'paid', paidAt, source: 'manual_user_recorded', bankConfirmed: false }
+        const payment = { id: nextId(db, 'pay'), dueDate, amount, status: 'paid', paidAt, source: 'manual_user_recorded', bankConfirmed: false, proof: proof ? { fileName: proof.name, sizeBytes: proof.size, contentType: proof.type } : null }
         m.payments.push(payment)
         pushActivity(db, { type: 'payment_marked_paid', category: 'payment', title: 'Pembayaran ditandai dibayar', body: `Jatuh tempo ${dueDate} · dicatat manual, tidak tersinkron dengan bank.`, action: { label: 'Lihat pembayaran', route: '/my-kpr/payment' } })
         touch(db, m)

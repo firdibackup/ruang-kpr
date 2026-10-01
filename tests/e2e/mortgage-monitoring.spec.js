@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { useScenario } from './helpers'
+import { pdf, useScenario } from './helpers'
 
 const save = (page) => page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
@@ -72,6 +72,13 @@ test('monitoring: 6-step setup (estimate branch) → active dashboard → paymen
   await expect(page).toHaveURL(/my-kpr\/overview/) // no application was created
   await page.getByRole('tab', { name: 'Payment' }).click()
   await expect(page.getByText(/user-recorded/)).toBeVisible()
+  await page.getByRole('button', { name: 'Tandai Sudah Dibayar' }).click()
+  const markPaid = page.getByRole('dialog', { name: 'Tandai pembayaran' })
+  await markPaid.locator('input[type=file]').setInputFiles(pdf('bukti-transfer.pdf'))
+  await expect(markPaid.getByText('bukti-transfer.pdf')).toBeVisible()
+  await markPaid.getByRole('button', { name: 'Simpan' }).click()
+  await expect(markPaid).toHaveCount(0)
+  await expect(page.getByText('bukti-transfer.pdf')).toBeVisible() // proof shows in history
   await page.getByRole('button', { name: 'Lihat Jadwal Amortisasi' }).click()
   await expect(page.getByText('Komposisi Pembayaran per Tahun')).toBeVisible()
   await page.getByRole('link', { name: 'Lihat Jadwal Lengkap' }).click()

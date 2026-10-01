@@ -142,6 +142,7 @@ export function HomePage() {
         <MonitoringDashboard
           mortgage={active}
           derived={derived}
+          clock={snap.clock}
           onChanged={reload}
         />
       )}

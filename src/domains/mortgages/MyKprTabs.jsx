@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowRightIcon, CircleCheckIcon, CircleIcon, CircleAlertIcon, PencilIcon, RefreshCwIcon } from 'lucide-react'
+import { ArrowRightIcon, CircleCheckIcon, CircleIcon, CircleAlertIcon, PaperclipIcon, PencilIcon, RefreshCwIcon } from 'lucide-react'
 import { api } from '@/data/api'
-import { addDays, addMonths, daysUntil } from '@/calculations/dates'
+import { addDays, daysUntil } from '@/calculations/dates'
 import { CERTIFICATES, PROPERTY_TYPES, dateLong, dateShort, daysLabel, labelOf, monthName, monthYear, percentBps, percentRatio, rupiah, signedRupiah, tenorLabel, toMoney } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { DateField, MoneyField, SelectField } from '@/components/shared/fields'
 import { FormDialog } from '@/components/shared/dialogs'
+import { UploadRow } from '@/components/shared/UploadRow'
 import { Timeline } from '@/components/shared/progress'
 import { Disclaimer, EstimateTag, Notice, Panel, ProgressBar, Spinner, SummaryRows } from '@/components/shared/ui'
 
@@ -60,13 +61,10 @@ export function OverviewTab() {
 export function PaymentTab() {
   const { m, d, snap, reload } = useOutletContext()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
+  const [marking, setMarking] = useState(null) // due date the dialog opens with
   const row = d.schedule?.rows.find((r) => r.dueDate === d.nextDue) ?? null
   const paid = new Map(m.payments.filter((p) => p.status === 'paid').map((p) => [p.dueDate, p]))
-  const previousDue = addMonths(d.nextDue, -1, m.dueDay)
-  const months = [previousDue, d.nextDue, addMonths(d.nextDue, 1, m.dueDay)].filter((x) => x > m.startDate)
-  const history = [...new Set([...m.payments.map((p) => p.dueDate), ...months])].sort().slice(-5)
-  const unpaid = months.filter((x) => !paid.has(x) && x <= addDays(snap.clock, 31))
+  const history = [...new Set([...m.payments.map((p) => p.dueDate), ...d.dueWindow])].sort().slice(-5)
 
   const undo = async (payment) => {
     await api.mortgages.removePayment(m.id, payment.id)
@@ -93,10 +91,18 @@ export function PaymentTab() {
         ) : (
           <Notice tone="muted">Komposisi pokok/bunga belum dapat dihitung: {d.scheduleMissing.join(', ') || 'data belum lengkap'}.</Notice>
         )}
-        <Button className="mt-2.5 w-fit" onClick={() => navigate('/my-kpr/amortization')}>
-          Lihat Jadwal Amortisasi
-          <ArrowRightIcon aria-hidden />
-        </Button>
+        <div className="mt-2.5 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+          {d.payableDues.includes(d.nextDue) && (
+            <Button onClick={() => setMarking(d.nextDue)}>
+              <CircleCheckIcon aria-hidden />
+              Tandai Sudah Dibayar
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => navigate('/my-kpr/amortization')}>
+            Lihat Jadwal Amortisasi
+            <ArrowRightIcon aria-hidden />
+          </Button>
+        </div>
       </Panel>
       <Panel className="gap-3 sm:p-7">
         <h2 className="text-[17px] font-extrabold">Riwayat pembayaran</h2>
@@ -104,20 +110,34 @@ export function PaymentTab() {
           {history.map((due) => {
             const p = paid.get(due)
             const past = due < snap.clock
+            const label = `${monthName(due)} ${due.slice(0, 4)}`
             return (
-              <li key={due} className="flex min-h-[52px] flex-wrap items-center justify-between gap-2 border-b border-line px-1 text-sm last:border-b-0">
-                <span className="font-bold">
-                  {monthName(due)} {due.slice(0, 4)}
+              <li key={due} className="flex min-h-[60px] flex-wrap items-center justify-between gap-2 border-b border-line px-1 py-2 text-sm last:border-b-0">
+                <span className="flex min-w-[120px] flex-1 basis-0 flex-col gap-0.5">
+                  <span className="font-bold">{label}</span>
+                  {p?.proof && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground" title={p.proof.fileName}>
+                      <PaperclipIcon className="size-3.5 shrink-0" aria-hidden />
+                      <span className="sr-only">Bukti pembayaran:</span>
+                      <span className="truncate">{p.proof.fileName}</span>
+                    </span>
+                  )}
                 </span>
                 <span className="flex items-center gap-3">
                   <span className={`flex items-center gap-1.5 font-bold ${p ? 'text-success' : past ? 'text-warning-text' : 'text-muted-foreground'}`}>
                     {p ? <CircleCheckIcon className="size-4" aria-hidden /> : past ? <CircleAlertIcon className="size-4" aria-hidden /> : <CircleIcon className="size-4" aria-hidden />}
                     {p ? `Ditandai dibayar ${dateShort(p.paidAt)}` : past ? 'Belum ditandai' : 'Mendatang'}
                   </span>
-                  {p && (
+                  {p ? (
                     <button type="button" onClick={() => undo(p)} className="min-h-11 text-xs font-bold text-primary underline">
                       Batalkan
                     </button>
+                  ) : (
+                    d.payableDues.includes(due) && (
+                      <Button variant="secondary" size="sm" onClick={() => setMarking(due)} aria-label={`Tandai pembayaran ${label}`}>
+                        Tandai
+                      </Button>
+                    )
                   )}
                 </span>
               </li>
@@ -125,20 +145,21 @@ export function PaymentTab() {
           })}
         </ul>
         {!m.payments.length && <p className="text-[13px] text-muted-foreground">Belum ada pembayaran yang ditandai.</p>}
-        <Button variant="outline" size="md" className="mt-1.5 w-fit" onClick={() => setOpen(true)} disabled={!unpaid.length}>
-          Tandai Pembayaran
-        </Button>
         <Disclaimer>Status pembayaran kamu catat sendiri (user-recorded) dan tidak tersinkron dengan bank.</Disclaimer>
       </Panel>
-      {open && <MarkPaidDialog onOpenChange={setOpen} m={m} dueOptions={unpaid} clock={snap.clock} onDone={reload} />}
+      {marking && <MarkPaidDialog onOpenChange={() => setMarking(null)} m={m} dueOptions={d.payableDues} initialDue={marking} clock={snap.clock} onDone={reload} />}
     </div>
   )
 }
 
-function MarkPaidDialog({ onOpenChange, m, dueOptions, clock, onDone }) {
-  const [dueDate, setDueDate] = useState(dueOptions[0] ?? '')
+const PROOF_DOC = { label: 'Bukti pembayaran', required: false, hint: 'Foto atau PDF bukti transfer, maks. 5MB.' }
+
+// Shared by the Payment tab and the Home dashboard so marking a payment is one tap from either.
+export function MarkPaidDialog({ onOpenChange, m, dueOptions, initialDue, clock, onDone }) {
+  const [dueDate, setDueDate] = useState(initialDue ?? dueOptions[0] ?? '')
   const [amount, setAmount] = useState(String(m.currentPayment))
   const [paidAt, setPaidAt] = useState(clock)
+  const [proof, setProof] = useState(null) // file metadata only
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
   const submit = async (e) => {
@@ -147,7 +168,7 @@ function MarkPaidDialog({ onOpenChange, m, dueOptions, clock, onDone }) {
     if (!paidAt || paidAt > clock) return setError('Tanggal bayar tidak boleh di masa depan.')
     setPending(true)
     try {
-      await api.mortgages.markPaid(m.id, { dueDate, amount: toMoney(amount), paidAt })
+      await api.mortgages.markPaid(m.id, { dueDate, amount: toMoney(amount), paidAt, proof })
       toast('Pembayaran ditandai dibayar.')
       onOpenChange(false)
       onDone()
@@ -163,6 +184,7 @@ function MarkPaidDialog({ onOpenChange, m, dueOptions, clock, onDone }) {
         <SelectField label="Jatuh tempo" value={dueDate} onChange={setDueDate} options={dueOptions.map((x) => ({ value: x, label: dateLong(x) }))} />
         <MoneyField label="Nominal dibayar" value={amount} onChange={setAmount} />
         <DateField label="Tanggal bayar" value={paidAt} onChange={setPaidAt} max={clock} />
+        <UploadRow compact doc={PROOF_DOC} state={proof && { status: 'uploaded', fileName: proof.name }} onUpload={async (file) => setProof(file)} />
         {error && <p role="alert" className="text-[13px] font-semibold text-danger">{error}</p>}
         <Button type="submit" size="md" disabled={pending || !dueDate} aria-busy={pending}>
           {pending && <Spinner />}
