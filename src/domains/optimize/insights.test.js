@@ -42,4 +42,22 @@ describe('goalConditions', () => {
     expect(c.maxLoanByCollateral).toBeNull()
     expect(c.maxGrossTopup).toBeNull()
   })
+
+  it('prices staying with the old bank for the phase 1 milestone', () => {
+    const c = goalConditions(data, clock)
+    expect(c.totalInterest).toBe(500_000_000) // 180 × Rp5 jt − Rp400 jt sisa pokok
+    expect(c.payoffDate).toBe('2041-09-12')
+  })
+
+  it('still prices staying on the estimate path, where the rate type is unknown', () => {
+    const c = goalConditions({ ...data, oldLoan: { ...data.oldLoan, rateType: null } }, clock)
+    expect(c.rate.mode).toBeNull()
+    expect(c.totalInterest).toBe(500_000_000)
+  })
+
+  it('leaves staying costs null until the old loan is complete', () => {
+    const c = goalConditions({ ...data, oldLoan: { originalPrincipal: 500_000_000 } }, clock)
+    expect(c.totalInterest).toBeNull()
+    expect(c.payoffDate).toBeNull()
+  })
 })

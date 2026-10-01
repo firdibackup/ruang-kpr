@@ -45,6 +45,9 @@ export function goalConditions({ employment, oldLoan: o = {}, finance: f = {}, p
   return {
     outstanding: o.outstanding ?? null,
     exitCosts: baseline?.exit.total ?? null,
+    // What staying costs (phase 1 milestone): interest left and payoff month at the recorded payment.
+    totalInterest: baseline?.totalInterest ?? null,
+    payoffDate: baseline?.payoffDate ?? null,
     fundsForCosts: f.fundsForCosts ?? null,
     dtiRatio: income > 0 && o.currentPayment > 0 ? (o.currentPayment + otherDebt) / income : null,
     rate: rateOf(o, clock),
