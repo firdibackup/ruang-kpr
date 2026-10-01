@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { FormDialog } from '@/components/shared/dialogs'
 import { MarkPaidDialog } from '@/domains/mortgages/MyKprTabs'
 import { Chip, Disclaimer, EstimateTag, HeroCard, IconBox, Notice, Panel, ProgressBar, Skeleton, SummaryRows } from '@/components/shared/ui'
+import { progressGap, rateTypeLabel } from '@/domains/mortgages/setupMeta'
 
 export const HEALTH_SENTENCE = {
   dti: 'Rasio cicilan kamu agak tinggi.',
@@ -101,6 +102,12 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
             <Disclaimer>Bunga floating adalah estimasi dan dapat berubah mengikuti kebijakan bank.</Disclaimer>
           </div>
         </section>
+      )}
+
+      {d.mode === null && (
+        <Notice tone="warn" title="Jenis bunga belum diketahui" action={<Link to="/monitoring/setup/2?edit=home" className="text-[13px] font-bold text-primary underline">Isi jenis bunga</Link>}>
+          Cek di aplikasi bank supaya kami bisa mengingatkan sebelum floating.
+        </Notice>
       )}
 
       {/* Opportunity leads the dashboard; only the fixed-rate warning sits above it. */}
@@ -195,19 +202,30 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
       {/* Health → Next Payment → KPR → Agenda on one column; two columns on desktop. */}
       <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:items-start">
         <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
-          <Panel className="order-1 flex-row items-center gap-6 xl:order-none">
-            <HealthRing health={d.health} size={d.mode === 'normal' ? 112 : 92} />
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {d.health.score == null ? (
+            <Panel className="order-1 xl:order-none">
               <span className="text-[13px] font-extrabold text-ink-3">KPR Health</span>
-              <Chip tone={d.health.tone}>{d.health.label}</Chip>
-              <p className="text-sm leading-[21px] text-ink-2">{d.health.score >= 80 ? 'Kondisi KPR kamu sehat.' : HEALTH_SENTENCE[weakest?.key]}</p>
-              {d.health.partial && <p className="text-xs text-warning-text">Skor parsial — sebagian komponen belum dapat dihitung.</p>}
+              <p className="text-sm leading-[21px] text-ink-2">Lengkapi data untuk melihat KPR Health.</p>
               <Link to="/my-kpr/health" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary">
-                Lihat penyebab
+                Lihat yang perlu dilengkapi
                 <ArrowRightIcon className="size-[15px]" aria-hidden />
               </Link>
-            </div>
-          </Panel>
+            </Panel>
+          ) : (
+            <Panel className="order-1 flex-row items-center gap-6 xl:order-none">
+              <HealthRing health={d.health} size={d.mode === 'normal' ? 112 : 92} />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <span className="text-[13px] font-extrabold text-ink-3">KPR Health</span>
+                <Chip tone={d.health.tone}>{d.health.label}</Chip>
+                <p className="text-sm leading-[21px] text-ink-2">{d.health.score >= 80 ? 'Kondisi KPR kamu sehat.' : HEALTH_SENTENCE[weakest?.key]}</p>
+                {d.health.partial && <p className="text-xs text-warning-text">Skor parsial — sebagian komponen belum dapat dihitung.</p>}
+                <Link to="/my-kpr/health" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary">
+                  Lihat penyebab
+                  <ArrowRightIcon className="size-[15px]" aria-hidden />
+                </Link>
+              </div>
+            </Panel>
+          )}
 
           <Panel className="order-3 xl:order-none">
             <div className="flex items-center justify-between gap-3">
@@ -231,16 +249,27 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
                   <span className="text-[13px] text-ink-3">Sisa pokok{m.outstandingEstimated && ' (estimasi)'}</span>
                   <span className="text-2xl font-extrabold tracking-[-0.3px] tabular">{rupiah(m.outstandingPrincipal)}</span>
                 </div>
-                <span className="text-[13px] text-muted-foreground">dari {rupiah(m.originalPrincipal)}</span>
+                {m.originalPrincipal > 0 && <span className="text-[13px] text-muted-foreground">dari {rupiah(m.originalPrincipal)}</span>}
               </div>
-              <ProgressBar value={d.paidRatio * 100} label="Pokok lunas" />
-              <span className="text-[13px] font-bold text-primary">{Math.round(d.paidRatio * 100)}% pokok lunas</span>
+              {d.paidRatio == null ? (
+                <span className="flex flex-wrap items-center gap-x-2 text-[13px] text-ink-3">
+                  Progres pelunasan belum diketahui.
+                  <Link to={progressGap(m, 'home').to} className="flex min-h-11 items-center font-bold text-primary underline">
+                    {progressGap(m, 'home').label}
+                  </Link>
+                </span>
+              ) : (
+                <>
+                  <ProgressBar value={d.paidRatio * 100} label="Pokok lunas" />
+                  <span className="text-[13px] font-bold text-primary">{Math.round(d.paidRatio * 100)}% pokok lunas</span>
+                </>
+              )}
             </div>
             <SummaryRows
               rows={[
-                { k: 'Bunga saat ini', v: <span className="flex items-center gap-2">{percentBps(m.currentRateBps)}<span className={cn('rounded-full px-2.5 py-1 text-xs font-extrabold', isFloating ? 'bg-warning-bg text-warning' : 'bg-secondary text-primary')}>{isFloating ? 'Floating' : 'Fixed'}</span></span> },
-                { k: 'Masa fixed berakhir', v: isFloating ? 'Sudah berakhir' : dateShort(m.fixedUntil) },
-                { k: 'Sisa tenor', v: `${tenorLabel(m.remainingTenorMonths)} lagi` },
+                { k: 'Bunga saat ini', v: <span className="flex items-center gap-2">{percentBps(m.currentRateBps)}<span className={cn('rounded-full px-2.5 py-1 text-xs font-extrabold', isFloating ? 'bg-warning-bg text-warning' : 'bg-secondary text-primary')}>{isFloating ? 'Floating' : rateTypeLabel(m.currentRateType)}</span></span> },
+                { k: 'Masa fixed berakhir', v: isFloating ? 'Sudah berakhir' : m.currentRateType === 'fixed' ? dateShort(m.fixedUntil) : 'Belum diketahui' },
+                { k: 'Sisa tenor', v: m.remainingTenorMonths ? `${tenorLabel(m.remainingTenorMonths)} lagi` : 'Belum diisi' },
                 { k: 'Lokasi properti', v: m.property?.city ? labelOf(CITIES, m.property.city) : 'Belum diisi' },
               ]}
             />

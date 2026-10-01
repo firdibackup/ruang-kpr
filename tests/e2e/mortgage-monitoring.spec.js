@@ -82,6 +82,31 @@ test('old setup draft resumes on the Reminder step in 3-step language', async ({
   await expect(page.locator('main ol > li')).toHaveText([/KPR kamu/, /Bunga/, /Reminder/])
 })
 
+test('beginner path: "Belum tahu" still activates; Home and My KPR ask for what is missing, never show null', async ({ page }) => {
+  await useScenario(page, 'fresh', '/monitoring/intro')
+  await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
+  await page.getByLabel('Bank').selectOption('Bank ABC')
+  await page.getByLabel('Cicilan per bulan').fill('4127324')
+  await page.getByLabel('Jatuh tempo setiap tanggal').fill('22')
+  await save(page)
+  await page.getByRole('radio', { name: /Belum tahu/ }).click()
+  await expect(page.getByRole('button', { name: /Mau tahu perkiraan/ })).toHaveCount(0)
+  await save(page)
+  await expect(page.getByText('Jenis bunga belum diketahui. Reminder floating aktif setelah kamu mengisinya.')).toBeVisible()
+  await page.getByRole('checkbox', { name: 'Data yang saya masukkan benar' }).check()
+  await page.getByRole('button', { name: 'Aktifkan Reminder' }).click()
+  await page.getByRole('link', { name: 'Lihat Dashboard' }).click()
+
+  await expect(page.getByText('Jenis bunga belum diketahui', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Isi jenis bunga' })).toHaveAttribute('href', '/monitoring/setup/2?edit=home')
+  await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
+  await page.goto('/my-kpr/overview')
+  await expect(page.getByRole('link', { name: 'Isi pinjaman awal' })).toBeVisible()
+  await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
+  await page.goto('/my-kpr/health')
+  await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
+})
+
 test('warning & partial states: H-90 warning is first, partial rate shows no fake table', async ({ page }) => {
   await useScenario(page, 'mortgage_active_h90', '/')
   await expect(page.getByText('Peringatan bunga · H-90')).toBeVisible()

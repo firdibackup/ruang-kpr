@@ -11,6 +11,7 @@ import { FormDialog } from '@/components/shared/dialogs'
 import { UploadRow } from '@/components/shared/UploadRow'
 import { Timeline } from '@/components/shared/progress'
 import { Disclaimer, EstimateTag, Notice, Panel, ProgressBar, Spinner, SummaryRows } from '@/components/shared/ui'
+import { progressGap, rateTypeLabel } from './setupMeta'
 
 export function OverviewTab() {
   const { m, d, snap } = useOutletContext()
@@ -21,8 +22,19 @@ export function OverviewTab() {
         <span className="text-[13px] font-extrabold text-ink-3">Sisa Pokok {m.outstandingEstimated && <EstimateTag />}</span>
         <span className="text-[34px] font-extrabold tracking-[-1px] tabular sm:text-[40px]">{rupiah(m.outstandingPrincipal)}</span>
         <span className="mt-2 text-[13px] font-extrabold text-ink-3">Progress Pokok</span>
-        <ProgressBar value={d.paidRatio * 100} size="lg" label="Progres pokok lunas" />
-        <span className="text-sm font-bold text-primary">{Math.round(d.paidRatio * 100)}% lunas</span>
+        {d.paidRatio == null ? (
+          <span className="flex flex-wrap items-center gap-x-2 text-sm text-ink-3">
+            Progres pelunasan belum diketahui.
+            <Link to={progressGap(m, 'mykpr').to} className="flex min-h-11 items-center font-bold text-primary underline">
+              {progressGap(m, 'mykpr').label}
+            </Link>
+          </span>
+        ) : (
+          <>
+            <ProgressBar value={d.paidRatio * 100} size="lg" label="Progres pokok lunas" />
+            <span className="text-sm font-bold text-primary">{Math.round(d.paidRatio * 100)}% lunas</span>
+          </>
+        )}
         <div className="grid grid-cols-3 gap-2 border-t border-line pt-3.5">
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-extrabold">{monthYear(m.startDate)}</span>
@@ -44,8 +56,8 @@ export function OverviewTab() {
             { k: 'Bank / produk', v: `${m.bankName}${m.productName ? ` · ${m.productName}` : ''}` },
             { k: 'Pinjaman Awal', v: rupiah(m.originalPrincipal) },
             { k: 'Cicilan Saat Ini', v: rupiah(m.currentPayment) },
-            { k: 'Sisa Tenor', v: `${m.remainingTenorMonths} bulan (${tenorLabel(m.remainingTenorMonths)})` },
-            { k: 'Bunga', v: `${percentBps(m.currentRateBps)} ${m.currentRateType === 'fixed' ? 'Fixed' : 'Floating'}` },
+            { k: 'Sisa Tenor', v: m.remainingTenorMonths ? `${m.remainingTenorMonths} bulan (${tenorLabel(m.remainingTenorMonths)})` : 'Belum diisi' },
+            { k: 'Bunga', v: m.currentRateBps ? `${percentBps(m.currentRateBps)} ${rateTypeLabel(m.currentRateType)}` : rateTypeLabel(m.currentRateType) },
             { k: 'Jatuh tempo', v: `Setiap tanggal ${m.dueDay}` },
           ]}
         />
