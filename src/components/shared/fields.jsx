@@ -7,12 +7,18 @@ import { thousands } from '@/lib/format'
 const shell = 'flex h-[54px] items-center gap-2 rounded-lg border bg-field px-[18px] transition-colors focus-within:border-primary focus-within:ring-3 focus-within:ring-ring/15'
 const tone = (error, highlight) => (error ? 'border-brand-red' : highlight ? 'border-warning-accent bg-warning-soft' : 'border-input')
 
-export function FieldShell({ id, label, hint, error, optional, span, className, children, labelFor = true }) {
+// `required` adds the visual * only; each control sets aria-required itself, so labels keep their accessible names.
+export function FieldShell({ id, label, hint, error, optional, required, span, className, children, labelFor = true }) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-2', span && 'sm:col-span-2', className)}>
       {label && (
         <div className="flex items-baseline gap-2 text-sm leading-5 font-semibold text-ink-2">
           {labelFor ? <label htmlFor={id}>{label}</label> : <span id={`${id}-label`}>{label}</span>}
+          {required && (
+            <span className="-ml-1.5 text-danger" aria-hidden>
+              *
+            </span>
+          )}
           {optional && <span className="text-xs font-medium text-muted-foreground">Opsional</span>}
         </div>
       )}
@@ -38,10 +44,10 @@ export function FieldError({ id, children }) {
 
 const describedBy = (id, hint, error) => [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ') || undefined
 
-export function TextField({ label, name, value, onChange, onBlur, error, hint, optional, span, placeholder, type = 'text', inputMode, autoComplete, prefix, suffix, highlight, max, min, maxLength, className, disabled }) {
+export function TextField({ label, name, value, onChange, onBlur, error, hint, optional, required, span, placeholder, type = 'text', inputMode, autoComplete, prefix, suffix, highlight, max, min, maxLength, className, disabled }) {
   const id = useId()
   return (
-    <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} span={span} className={className}>
+    <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} required={required} span={span} className={className}>
       <div className={cn(shell, tone(error, highlight), disabled && 'opacity-60')}>
         {prefix && <span className="text-[15px] font-bold text-muted-foreground" aria-hidden>{prefix}</span>}
         <input
@@ -58,6 +64,7 @@ export function TextField({ label, name, value, onChange, onBlur, error, hint, o
           min={min}
           maxLength={maxLength}
           disabled={disabled}
+          aria-required={required || undefined}
           aria-invalid={error ? 'true' : undefined}
           aria-describedby={describedBy(id, hint, error)}
           className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-medium text-foreground outline-none placeholder:text-[#8a93a3]"
@@ -85,10 +92,10 @@ export function DateField(props) {
   return <TextField {...props} type="date" />
 }
 
-export function TextAreaField({ label, name, value, onChange, onBlur, error, hint, optional, span, placeholder, rows = 2, highlight }) {
+export function TextAreaField({ label, name, value, onChange, onBlur, error, hint, optional, required, span, placeholder, rows = 2, highlight }) {
   const id = useId()
   return (
-    <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} span={span}>
+    <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} required={required} span={span}>
       <textarea
         id={id}
         name={name}
@@ -97,6 +104,7 @@ export function TextAreaField({ label, name, value, onChange, onBlur, error, hin
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         placeholder={placeholder}
+        aria-required={required || undefined}
         aria-invalid={error ? 'true' : undefined}
         aria-describedby={describedBy(id, hint, error)}
         className={cn('w-full resize-y rounded-lg border bg-field px-[18px] py-3.5 text-[15px] leading-[22px] font-medium outline-none placeholder:text-[#8a93a3] focus:border-primary focus:ring-3 focus:ring-ring/15', tone(error, highlight))}
@@ -105,10 +113,10 @@ export function TextAreaField({ label, name, value, onChange, onBlur, error, hin
   )
 }
 
-export function SelectField({ label, name, value, onChange, onBlur, error, hint, optional, span, placeholder = 'Pilih…', options, highlight }) {
+export function SelectField({ label, name, value, onChange, onBlur, error, hint, optional, required, span, placeholder = 'Pilih…', options, highlight }) {
   const id = useId()
   return (
-    <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} span={span}>
+    <FieldShell id={id} label={label} hint={hint} error={error} optional={optional} required={required} span={span}>
       <div className="relative">
         <select
           id={id}
@@ -116,6 +124,7 @@ export function SelectField({ label, name, value, onChange, onBlur, error, hint,
           value={value ?? ''}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
+          aria-required={required || undefined}
           aria-invalid={error ? 'true' : undefined}
           aria-describedby={describedBy(id, hint, error)}
           className={cn('h-[54px] w-full cursor-pointer appearance-none rounded-lg border bg-field pr-11 pl-[18px] text-[15px] font-medium outline-none focus:border-primary focus:ring-3 focus:ring-ring/15', tone(error, highlight), !value && 'text-[#6b7587]')}
@@ -134,16 +143,17 @@ export function SelectField({ label, name, value, onChange, onBlur, error, hint,
 }
 
 // Radio options rendered as cards (artifact "radio" pattern) with Radix keyboard semantics.
-export function RadioCards({ label, name, value, onChange, onBlur, error, hint, span, options, layout = 'row', variant = 'card' }) {
+export function RadioCards({ label, name, value, onChange, onBlur, error, hint, required, span, options, layout = 'row', variant = 'card' }) {
   const id = useId()
   return (
-    <FieldShell id={id} label={label} hint={hint} error={error} span={span} labelFor={false}>
+    <FieldShell id={id} label={label} hint={hint} error={error} required={required} span={span} labelFor={false}>
       <RadioGroupPrimitive.Root
         value={value ?? ''}
         onValueChange={onChange}
         onBlur={onBlur}
         name={name}
         aria-labelledby={label ? `${id}-label` : undefined}
+        required={required}
         aria-describedby={describedBy(id, hint, error)}
         aria-invalid={error ? 'true' : undefined}
         className={cn('flex gap-2.5', layout === 'column' ? 'flex-col' : 'flex-wrap')}

@@ -26,7 +26,7 @@ export function HealthPage() {
   const complete = {
     dti: { label: 'Isi penghasilan', to: '/profile/edit' },
     ltv: { label: 'Isi nilai properti', to: '/my-kpr/property?edit=1' },
-    rate: { label: 'Isi jenis bunga', to: '/monitoring/setup/2?edit=mykpr' },
+    rate: { label: 'Isi jenis bunga', to: '/monitoring/setup/1?edit=mykpr' },
     progress: progressGap(m, 'mykpr'),
   }
   const evidence = {

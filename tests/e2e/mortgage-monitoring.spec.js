@@ -2,55 +2,102 @@ import { expect, test } from '@playwright/test'
 import { pdf, useScenario } from './helpers'
 
 const save = (page) => page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
+const skip = (page) => page.getByRole('button', { name: 'Lewati', exact: true }).click()
 
-test('monitoring: 3-step reminder setup (fixed + perkiraan) → active dashboard → payment → amortization; no application created', async ({ page }) => {
+// Step 1 (wajib): everything reminders and amortization need. Sisa pokok is estimated, not typed.
+async function fillKprStep(page) {
+  await page.getByLabel('Bank', { exact: true }).selectOption('Bank ABC')
+  await page.getByLabel('Jumlah pinjaman awal').fill('600000000')
+  await page.getByLabel('Cicilan bulanan saat ini').fill('4127324')
+  await page.getByLabel('Tenor awal').fill('240')
+  await page.getByLabel('Tanggal akad').fill('2021-12-22')
+  await page.getByLabel('Jatuh tempo setiap tanggal').fill('22')
+  await page.getByRole('radio', { name: /Masih fixed/ }).click()
+  await page.getByLabel('Bunga saat ini').fill('5,50')
+  await page.getByLabel('Fixed berakhir').fill('2026-12-22')
+  await page.getByLabel('Estimasi bunga floating').fill('9,00')
+  await page.getByRole('radio', { name: 'Tidak, hitungkan perkiraan' }).click()
+  await expect(page.getByText(/Perkiraan sisa pokok ± .*, sisa tenor 183 bulan/)).toBeVisible()
+  await expect(page.getByText(/Setelah fixed, cicilan bisa naik jadi/)).toBeVisible()
+  await save(page)
+}
+
+async function fillEmployment(page) {
+  await page.getByLabel('Penghasilan bulanan').fill('15000000')
+  await page.getByLabel('Jenis pekerjaan').selectOption('private_employee')
+  await page.getByLabel('Nama perusahaan / usaha').fill('PT Nusantara Digital')
+  await page.getByLabel('Jabatan / bidang usaha').fill('Software Engineer')
+  await page.getByLabel('Lama bekerja').fill('4')
+  await page.getByLabel('Tambahan bulan').fill('6')
+}
+
+async function activate(page) {
+  await page.getByRole('checkbox', { name: 'Data yang saya masukkan benar' }).check()
+  await page.getByRole('button', { name: 'Aktifkan Pemantauan KPR' }).click()
+  await expect(page.getByRole('heading', { name: 'Pemantauan KPR aktif' })).toBeVisible()
+}
+
+test('monitoring: 3-step setup (KPR wajib, data pendukung sebagian dilewati) → dashboard → payment → amortization; no application created', async ({ page }) => {
   await useScenario(page, 'fresh', '/')
   await page.getByRole('link', { name: /Pantau KPR Saya/ }).click()
   await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
   await expect(page).toHaveURL(/monitoring\/setup\/1/)
-  await expect(page.getByText('Bagian 1 dari 3 · KPR kamu')).toBeVisible()
+  await expect(page.getByText('Bagian 1 dari 3 · Data KPR')).toBeVisible()
   await expect(page.getByText('10% selesai.')).toBeAttached()
 
-  await page.getByLabel('Bank').selectOption('Bank ABC')
-  await page.getByLabel('Cicilan per bulan').fill('4127324')
-  await page.getByLabel('Jatuh tempo setiap tanggal').fill('22')
+  // Step 1 is required: an empty submit stops on the errors.
   await save(page)
-
-  await expect(page).toHaveURL(/setup\/2/)
-  await expect(page.getByText('45% selesai.')).toBeAttached()
-  await page.getByRole('radio', { name: /Masih fixed/ }).click()
+  await expect(page).toHaveURL(/setup\/1/)
+  await expect(page.getByLabel('Jumlah pinjaman awal')).toHaveAttribute('aria-invalid', 'true')
   // A past end date means the rate is already floating: one tap fixes the answer.
+  await page.getByRole('radio', { name: /Masih fixed/ }).click()
   await page.getByLabel('Fixed berakhir').fill('2026-09-01')
   await expect(page.getByText('Tanggal ini sudah lewat, berarti bunga kamu sudah floating.')).toBeVisible()
   await page.getByRole('button', { name: 'Pilih Sudah floating' }).click()
   await expect(page.getByRole('radio', { name: /Sudah floating/ })).toHaveAttribute('aria-checked', 'true')
-  await page.getByRole('radio', { name: /Masih fixed/ }).click()
-  await page.getByLabel('Fixed berakhir').fill('2026-12-22')
-  await page.getByRole('button', { name: /Mau tahu perkiraan cicilan setelah fixed/ }).click()
-  await page.getByLabel('Bunga sekarang').fill('5,50')
-  await page.getByLabel('Sisa tenor').fill('15')
-  await page.getByLabel('Tambahan bulan').fill('3')
-  await page.getByLabel('Perkiraan bunga floating').fill('9,00')
-  await expect(page.getByText(/Cicilan bisa naik jadi/)).toBeVisible()
+  await fillKprStep(page)
+
+  // Data pendukung: three short optional forms; required fields carry * and aria-required.
+  await expect(page).toHaveURL(/setup\/2$/)
+  await expect(page.getByText('Bagian 2 dari 3 · Data pendukung')).toBeVisible()
+  await expect(page.getByText('45% selesai.')).toBeAttached()
+  await expect(page.getByText('Form 1 dari 3')).toBeVisible()
+  // Only Nama is required here; an empty NIK saves just like Lewati would.
+  await expect(page.getByLabel('Nama sesuai KTP')).toHaveAttribute('aria-required', 'true')
+  await expect(page.getByLabel('NIK')).not.toHaveAttribute('aria-required', 'true')
   await save(page)
+  await expect(page).toHaveURL(/setup\/2\/pekerjaan$/)
+  await expect(page.getByText('55% selesai.')).toBeAttached()
+  // Nothing is prefilled that the user did not type; Penghasilan is the one required field.
+  await expect(page.getByLabel('Penghasilan bulanan')).toHaveValue('')
+  await expect(page.getByLabel('Cicilan kendaraan')).toHaveValue('')
+  await expect(page.getByLabel('Kartu kredit / paylater')).toHaveValue('')
+  await save(page)
+  await expect(page.getByLabel('Penghasilan bulanan')).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel('Jenis pekerjaan')).not.toHaveAttribute('aria-invalid', 'true')
+  await fillEmployment(page)
+  await save(page)
+  await expect(page).toHaveURL(/setup\/2\/properti$/)
+  await skip(page)
 
   await expect(page).toHaveURL(/setup\/3/)
-  await expect(page.getByText('Yang akan kami ingatkan')).toBeVisible()
-  await expect(page.getByText('85 hari lagi', { exact: true })).toBeVisible()
-  await expect(page.getByText('Cicilan setelah fixed')).toBeVisible()
+  await expect(page.getByText('75% selesai.')).toBeAttached()
   const payment = page.getByRole('group', { name: 'Pembayaran bulanan' })
   await expect(payment.getByRole('checkbox', { name: 'H-7' })).toHaveAttribute('aria-checked', 'true')
   await expect(payment.getByRole('checkbox', { name: 'Hari-H' })).toHaveAttribute('aria-checked', 'false')
   await expect(page.getByRole('group', { name: 'Masa fixed berakhir' }).getByRole('checkbox', { name: 'H-90' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.getByRole('checkbox', { name: /WhatsApp/ })).toHaveAttribute('aria-disabled', 'true')
-  await page.getByRole('checkbox', { name: 'Data yang saya masukkan benar' }).check()
-  await page.getByRole('button', { name: 'Aktifkan Reminder' }).click()
-  await expect(page.getByRole('heading', { name: 'Pemantauan KPR aktif' })).toBeVisible()
+  await expect(page.getByText('Karyawan Swasta · PT Nusantara Digital')).toBeVisible()
+  await expect(page.getByText('Data KTP bisa menyusul')).toBeVisible()
+  await expect(page.getByText('Belum diisi (opsional)')).toHaveCount(1) // Properti
+  await activate(page)
   await page.getByRole('link', { name: 'Lihat Dashboard' }).click()
 
   await expect(page.getByText('Fixed rate berakhir 85 hari lagi')).toBeVisible()
   await expect(page.locator('main canvas, main [data-chart]')).toHaveCount(0) // no charts on Home
 
+  await page.goto('/my-kpr/property')
+  await expect(page.getByRole('link', { name: 'Lengkapi data properti' })).toHaveAttribute('href', '/monitoring/setup/2/properti?edit=property')
   await page.goto('/my-kpr')
   await expect(page).toHaveURL(/my-kpr\/overview/) // no application was created
   await page.getByRole('tab', { name: 'Payment' }).click()
@@ -70,52 +117,53 @@ test('monitoring: 3-step reminder setup (fixed + perkiraan) → active dashboard
   await expect(page.getByText('Mulai periode floating — estimasi 9,00%')).toBeVisible()
 })
 
-test('old setup draft resumes on the Reminder step in 3-step language', async ({ page }) => {
+test('old setup draft resumes on the last step in the new 3-step language', async ({ page }) => {
   await useScenario(page, 'mortgage_setup_step_3', '/')
   await expect(page.getByText('Bagian 3 dari 3 · Reminder')).toBeVisible()
   await page.getByRole('button', { name: 'Lanjutkan Pengaturan' }).click()
   await expect(page).toHaveURL(/monitoring\/setup\/3/)
-  await expect(page.getByText('Yang akan kami ingatkan')).toBeVisible()
+  await expect(page.getByText('Ringkasan data')).toBeVisible()
   await page.goto('/monitoring/setup/6?edit=review') // link from the old 6-step setup
   await expect(page).toHaveURL(/monitoring\/setup\/3$/)
   await page.goto('/my-kpr')
-  await expect(page.locator('main ol > li')).toHaveText([/KPR kamu/, /Bunga/, /Reminder/])
+  await expect(page.locator('main ol > li')).toHaveText([/Data KPR/, /Data pendukung/, /Reminder/])
 })
 
-test('beginner path: "Belum tahu" still activates; Home and My KPR ask for what is missing, never show null', async ({ page }) => {
+test('Data pendukung from the KPR setup fills Take Over, so it is not typed again; skipped parts are flagged', async ({ page }) => {
   await useScenario(page, 'fresh', '/monitoring/intro')
   await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
-  await page.getByLabel('Bank').selectOption('Bank ABC')
-  await page.getByLabel('Cicilan per bulan').fill('4127324')
-  await page.getByLabel('Jatuh tempo setiap tanggal').fill('22')
+  await fillKprStep(page)
+  await page.getByLabel('NIK').fill('3174012345678901')
+  await page.getByLabel('Tempat lahir').fill('Bekasi')
+  await page.getByLabel('Tanggal lahir').fill('1994-08-12')
+  await page.getByRole('radio', { name: 'Laki-laki' }).click()
+  await page.getByLabel('Status perkawinan').selectOption('single')
+  await page.getByLabel('Alamat KTP').fill('Jl. Melati No. 12, Bekasi Selatan')
+  await page.getByLabel('Email').fill('firdi.audi@email.com')
   await save(page)
-  await page.getByRole('radio', { name: /Belum tahu/ }).click()
-  await expect(page.getByRole('button', { name: /Mau tahu perkiraan/ })).toHaveCount(0)
+  await fillEmployment(page)
   await save(page)
-  await expect(page.getByText('Jenis bunga belum diketahui. Reminder floating aktif setelah kamu mengisinya.')).toBeVisible()
-  await page.getByRole('checkbox', { name: 'Data yang saya masukkan benar' }).check()
-  await page.getByRole('button', { name: 'Aktifkan Reminder' }).click()
-  await page.getByRole('link', { name: 'Lihat Dashboard' }).click()
+  await skip(page) // Data properti
+  await activate(page)
 
-  await expect(page.getByText('Jenis bunga belum diketahui', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Isi jenis bunga' })).toHaveAttribute('href', '/monitoring/setup/2?edit=home')
-  await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
-  await page.goto('/my-kpr/overview')
-  await expect(page.getByRole('link', { name: 'Isi pinjaman awal' })).toBeVisible()
-  await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
-  await page.goto('/my-kpr/health')
-  await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
-  // An unknown rate type is never labelled Fixed; the Rate tab asks for it instead.
-  await page.goto('/my-kpr/rate')
-  await expect(page.getByRole('link', { name: 'Isi jenis bunga' })).toBeVisible()
-  await expect(page.locator('main')).not.toContainText('Fixed')
-
-  // Take Over from the monitored KPR needs bunga & sisa tenor first (sisa pinjaman is derived from them).
   await page.goto('/optimize/start?mode=takeover')
-  await expect(page.getByText('Untuk simulasi, lengkapi bunga dan sisa tenor KPR kamu dulu.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Lihat Kondisi KPR' })).toHaveCount(0)
-  await page.getByRole('link', { name: 'Lengkapi data bunga' }).click()
-  await expect(page).toHaveURL(/monitoring\/setup\/2\?edit=explore/)
+  await page.getByRole('button', { name: 'Lihat Kondisi KPR' }).click()
+  await page.getByRole('button', { name: 'Bandingkan Program' }).click()
+  await page.getByRole('button', { name: 'Lihat Detail' }).first().click()
+  await page.getByRole('button', { name: /^Ajukan / }).click()
+  await page.getByRole('button', { name: 'Lanjut Dokumen' }).click()
+  await expect(page).toHaveURL(/optimize\/6/)
+  await page.getByRole('button', { name: 'Unggah semua (demo)' }).click()
+  await expect(page.getByRole('button', { name: 'Simpan & Lanjutkan' })).toHaveAttribute('aria-disabled', 'false', { timeout: 30_000 })
+  await save(page)
+
+  await expect(page).toHaveURL(/optimize\/7/)
+  await expect(page.getByText('Karyawan Swasta · PT Nusantara Digital')).toBeVisible()
+  await expect(page.getByText('Lengkapi data pribadi.')).toHaveCount(0)
+  await expect(page.getByText('Lengkapi pekerjaan & penghasilan.')).toHaveCount(0)
+  await expect(page.getByText('Lengkapi data properti.')).toBeVisible() // skipped in the setup
+  await page.goto('/optimize/1')
+  await expect(page.getByLabel('NIK')).toHaveValue('3174012345678901')
 })
 
 test('warning & partial states: H-90 warning is first, partial rate shows no fake table', async ({ page }) => {

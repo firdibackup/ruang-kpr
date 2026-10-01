@@ -1,44 +1,54 @@
 import { describe, expect, it } from 'vitest'
 import { deriveMortgage, healthScore, nextMilestone, rateMode } from './derive'
-import { FIXED_PASSED, validateLoanStep, validateRateStep, validateReminders } from './validation'
+import { FIXED_PASSED, filledOnly, remainingFromStart, validateLoanStep, validatePropertyStep, validateReminders } from './validation'
 import { createSeed } from '@/data/seed'
 
 const today = '2026-09-28'
 
 describe('mortgage setup validation', () => {
-  const loan = { bankName: 'Bank ABC', bankOther: '', currentPayment: '4127324', dueDay: '22' }
+  const loan = {
+    bankName: 'Bank ABC', bankOther: '', scheme: 'conventional', originalPrincipal: '600000000', currentPayment: '4127324', originalTenorMonths: '240', startDate: '2021-12-22', dueDay: '22',
+    rateStatus: 'fixed', currentRate: '5,50', fixedUntil: '2026-12-22', floatingRate: '9,00', knowsOutstanding: 'no', outstandingPrincipal: '', remainingTenorMonths: '',
+  }
 
-  it('step 1 needs only bank, cicilan and due day', () => {
-    expect(validateLoanStep(loan)).toEqual({})
-    expect(Object.keys(validateLoanStep({ bankName: '', bankOther: '', currentPayment: '', dueDay: '' }))).toEqual(['bankName', 'currentPayment', 'dueDay'])
-    expect(validateLoanStep({ ...loan, dueDay: '32' }).dueDay).toBeTruthy()
-    expect(validateLoanStep({ ...loan, bankName: 'Bank lainnya', bankOther: 'B' }).bankOther).toBeTruthy()
+  it('step 1 requires the KPR data reminders and amortization need', () => {
+    expect(validateLoanStep(loan, { today })).toEqual({})
+    const empty = Object.fromEntries(Object.keys(loan).map((k) => [k, '']))
+    expect(Object.keys(validateLoanStep(empty, { today })).sort()).toEqual(['bankName', 'currentPayment', 'currentRate', 'dueDay', 'knowsOutstanding', 'originalPrincipal', 'originalTenorMonths', 'rateStatus', 'scheme', 'startDate'].sort())
+    expect(validateLoanStep({ ...loan, dueDay: '32' }, { today }).dueDay).toBeTruthy()
+    expect(validateLoanStep({ ...loan, bankName: 'Bank lainnya', bankOther: 'B' }, { today }).bankOther).toBeTruthy()
+    expect(validateLoanStep({ ...loan, startDate: '2026-10-01' }, { today }).startDate).toBeTruthy()
   })
 
-  it('edit mode: pinjaman awal is optional but cannot be below the remaining loan', () => {
-    expect(validateLoanStep({ ...loan, originalPrincipal: '' }, { editing: true })).toEqual({})
-    expect(validateLoanStep({ ...loan, originalPrincipal: '400000000' }, { editing: true, outstanding: 450_000_000 }).originalPrincipal).toBeTruthy()
-    expect(validateLoanStep({ ...loan, originalPrincipal: '600000000' }, { editing: true, outstanding: 450_000_000 })).toEqual({})
+  it('fixed needs a future end date and a floating estimate; floating needs neither', () => {
+    expect(validateLoanStep({ ...loan, fixedUntil: '' }, { today }).fixedUntil).toBeTruthy()
+    expect(validateLoanStep({ ...loan, fixedUntil: '2026-09-01' }, { today }).fixedUntil).toBe(FIXED_PASSED)
+    expect(validateLoanStep({ ...loan, floatingRate: '' }, { today }).floatingRate).toBeTruthy()
+    expect(validateLoanStep({ ...loan, rateStatus: 'floating', fixedUntil: '', floatingRate: '' }, { today })).toEqual({})
   })
 
-  it('step 2: the rate status is required; fixed needs a future end date', () => {
-    expect(validateRateStep({ rateStatus: '' }, { today }).rateStatus).toBeTruthy()
-    expect(validateRateStep({ rateStatus: 'unknown' }, { today })).toEqual({})
-    expect(validateRateStep({ rateStatus: 'floating' }, { today })).toEqual({})
-    expect(validateRateStep({ rateStatus: 'fixed', fixedUntil: '' }, { today }).fixedUntil).toBeTruthy()
-    expect(validateRateStep({ rateStatus: 'fixed', fixedUntil: '2026-09-01' }, { today }).fixedUntil).toBe(FIXED_PASSED)
-    expect(validateRateStep({ rateStatus: 'fixed', fixedUntil: '2026-12-22' }, { today })).toEqual({})
+  it('sisa pokok: official figures are checked; otherwise sisa tenor comes from tenor awal and tanggal akad', () => {
+    expect(remainingFromStart(loan, today)).toBe(183)
+    expect(validateLoanStep({ ...loan, originalTenorMonths: '12', startDate: '2020-01-01' }, { today }).startDate).toBeTruthy() // already paid off
+    const official = { ...loan, knowsOutstanding: 'yes' }
+    expect(Object.keys(validateLoanStep(official, { today }))).toEqual(['outstandingPrincipal', 'remainingTenorMonths'])
+    expect(validateLoanStep({ ...official, outstandingPrincipal: '700000000', remainingTenorMonths: '183' }, { today }).outstandingPrincipal).toBeTruthy()
+    expect(validateLoanStep({ ...official, outstandingPrincipal: '415000000', remainingTenorMonths: '183' }, { today })).toEqual({})
   })
 
-  it('step 2 estimate fields are optional and checked only when filled', () => {
-    const base = { rateStatus: 'fixed', fixedUntil: '2026-12-22' }
-    expect(validateRateStep({ ...base, currentRate: '', floatingRate: '', tenorYears: '', tenorMonths: '', outstanding: '' }, { today })).toEqual({})
-    expect(validateRateStep({ ...base, currentRate: '45' }, { today }).currentRate).toBeTruthy()
-    expect(validateRateStep({ ...base, floatingRate: '45' }, { today }).floatingRate).toBeTruthy()
-    expect(validateRateStep({ ...base, tenorYears: '31' }, { today }).tenorYears).toBeTruthy()
-    expect(validateRateStep({ ...base, tenorYears: '15', tenorMonths: '12' }, { today }).tenorMonths).toBeTruthy()
-    expect(validateRateStep({ ...base, tenorYears: '15', tenorMonths: '3' }, { today })).toEqual({})
-    expect(validateRateStep({ ...base, outstanding: '0' }, { today }).outstanding).toBeTruthy()
+  it('step 2 property: details required when filled in, the value may stay empty', () => {
+    const property = { type: 'landed_house', city: 'Kota Bekasi', address: 'Griya Asri Blok C2', landArea: '72', buildingArea: '45', certificateType: 'shm', certificateOwner: 'Firdi Audi', estimatedValue: '', disputed: 'no' }
+    expect(validatePropertyStep(property)).toEqual({})
+    expect(validatePropertyStep({ ...property, type: 'apartment', landArea: '' })).toEqual({})
+    expect(validatePropertyStep({ ...property, estimatedValue: '0' }).estimatedValue).toBeTruthy()
+    expect(Object.keys(validatePropertyStep({ ...property, address: '', certificateOwner: '' }))).toEqual(['address', 'certificateOwner'])
+  })
+
+  it('Data pendukung: only the required keys must be filled; other fields are checked once typed', () => {
+    const errors = { fullName: 'a', nik: 'b', email: 'c' }
+    expect(filledOnly(errors, { fullName: '', nik: '', email: '' }, ['fullName'])).toEqual({ fullName: 'a' })
+    expect(filledOnly(errors, { fullName: 'Firdi', nik: '123', email: '' }, ['fullName'])).toEqual({ fullName: 'a', nik: 'b' })
+    expect(filledOnly(validatePropertyStep({ type: '', city: '', address: '', landArea: '0', buildingArea: '', certificateType: '', certificateOwner: '', estimatedValue: '' }), { landArea: '0' })).toEqual({ landArea: expect.any(String) })
   })
 
   it('reminders need one payment offset and one channel', () => {

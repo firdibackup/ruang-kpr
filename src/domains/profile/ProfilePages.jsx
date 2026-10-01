@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { BellIcon, BriefcaseIcon, LogOutIcon, PencilIcon, ShieldCheckIcon, UserIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { useForm, useResource } from '@/lib/hooks'
-import { GENDERS, MARITAL, OCCUPATIONS, dateLong, initials, intInput, labelOf, maskNik, moneyInput, rupiah, toMoney } from '@/lib/format'
+import { GENDERS, MARITAL, OCCUPATIONS, dateLong, initials, labelOf, maskNik, rupiah, toMoney } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, SelectField, TextAreaField, TextField } from '@/components/shared/fields'
@@ -14,7 +14,7 @@ import { useSession } from '@/domains/session/SessionProvider'
 import { ReminderSettingsForm, reminderSummary } from '@/domains/mortgages/ReminderSettingsForm'
 import { validateReminders } from '@/domains/mortgages/validation'
 import { validateEmploymentBasic } from '@/domains/optimize/validation'
-import { validatePersonal } from '@/domains/applications/validation'
+import { profileFormValues, validatePersonal } from '@/domains/applications/validation'
 
 export function ProfilePage() {
   const navigate = useNavigate()
@@ -140,17 +140,9 @@ function ProfileForm({ snap }) {
   const p = snap.profile ?? {}
   const f = snap.finance ?? {}
   const validate = useCallback((v) => ({ ...validatePersonal(v, { today: snap.clock }), ...validateEmploymentBasic(v) }), [snap.clock])
-  const form = useForm(
-    {
-      fullName: p.fullName ?? '', nik: p.nik ?? '', birthPlace: p.birthPlace ?? '', birthDate: p.birthDate ?? '', gender: p.gender ?? '', maritalStatus: p.maritalStatus ?? '', address: p.address ?? '', phone: p.phone ?? '', email: p.email ?? '',
-      occupation: p.occupation ?? '', companyName: p.companyName ?? '', jobTitle: p.jobTitle ?? '', workYears: intInput(p.workYears), workMonths: intInput(p.workMonths), monthlyIncome: moneyInput(f.monthlyIncome), jointIncome: f.jointIncome ?? false, partnerIncome: moneyInput(f.partnerIncome),
-      vehicleDebt: moneyInput(f.vehicleDebt), cardDebt: moneyInput(f.cardDebt), otherDebt: moneyInput(f.otherDebt),
-    },
-    validate,
-  )
+  const form = useForm(profileFormValues(p, f), validate)
   const [saving, setSaving] = useState(false)
   const [apiError, setApiError] = useState('')
-  const v = form.values
   const contactField = snap.user?.contactType === 'email' ? 'email' : 'phone'
   const onSubmit = form.submit(async (x) => {
     setSaving(true)
@@ -184,17 +176,7 @@ function ProfileForm({ snap }) {
             <IconBox icon={UserIcon} />
             <h2 className="text-lg font-extrabold">Data pribadi</h2>
           </div>
-          <FormGrid>
-            <TextField label="Nama sesuai KTP" span {...form.bind('fullName')} />
-            <TextField label="NIK" inputMode="numeric" maxLength={16} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
-            <TextField label="Tempat lahir" {...form.bind('birthPlace')} />
-            <DateField label="Tanggal lahir" max={snap.clock} {...form.bind('birthDate')} />
-            <RadioCards label="Jenis kelamin" options={GENDERS} {...form.bind('gender')} />
-            <SelectField label="Status perkawinan" options={MARITAL} {...form.bind('maritalStatus')} />
-            <TextAreaField label="Alamat KTP" span {...form.bind('address')} />
-            <TextField label="Nomor ponsel" inputMode="tel" disabled={contactField === 'phone'} hint={contactField === 'phone' ? 'Kontak terverifikasi.' : ''} {...form.bind('phone')} />
-            <TextField label="Email" type="email" disabled={contactField === 'email'} hint={contactField === 'email' ? 'Kontak terverifikasi.' : ''} {...form.bind('email')} />
-          </FormGrid>
+          <PersonalFields form={form} clock={snap.clock} contactField={contactField} />
         </Panel>
         <Panel className="gap-5 sm:p-7">
           <div className="flex items-center gap-3">
@@ -202,17 +184,8 @@ function ProfileForm({ snap }) {
             <h2 className="text-lg font-extrabold">Pekerjaan & penghasilan</h2>
           </div>
           <FormGrid>
-            <SelectField label="Jenis pekerjaan" options={OCCUPATIONS} span {...form.bind('occupation')} />
-            <TextField label="Nama perusahaan / usaha" {...form.bind('companyName')} />
-            <TextField label="Jabatan / bidang usaha" {...form.bind('jobTitle')} />
-            <NumberField label="Lama bekerja" suffix="tahun" {...form.bind('workYears')} />
-            <NumberField label="Tambahan bulan" suffix="bulan" {...form.bind('workMonths')} />
-            <MoneyField label="Penghasilan bulanan" span {...form.bind('monthlyIncome')} />
-            <CheckboxField label="Gabungkan pendapatan pasangan" span checked={v.jointIncome} onChange={(x) => form.setValues({ ...v, jointIncome: x, partnerIncome: x ? v.partnerIncome : '' })} />
-            {v.jointIncome && <MoneyField label="Penghasilan pasangan" span {...form.bind('partnerIncome')} />}
-            <MoneyField label="Cicilan kendaraan" optional placeholder="0" {...form.bind('vehicleDebt')} />
-            <MoneyField label="Kartu kredit / paylater" optional placeholder="0" {...form.bind('cardDebt')} />
-            <MoneyField label="Pinjaman lain" optional placeholder="0" span hint="Dipakai untuk rasio cicilan di KPR Health." {...form.bind('otherDebt')} />
+            <JobFields form={form} />
+            <IncomeFields form={form} />
           </FormGrid>
         </Panel>
         {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
@@ -226,6 +199,54 @@ function ProfileForm({ snap }) {
           </Button>
         </div>
       </form>
+    </>
+  )
+}
+
+// Shared with the KPR setup (Data pendukung): one form for the profile data Take Over reuses.
+// `required` lists the keys this form marks with *; each caller decides (the setup asks only Nama and Penghasilan).
+export function PersonalFields({ form, clock, contactField, required = [] }) {
+  const req = (k) => required.includes(k)
+  return (
+    <FormGrid>
+      <TextField label="Nama sesuai KTP" required={req('fullName')} span {...form.bind('fullName')} />
+      <TextField label="NIK" required={req('nik')} inputMode="numeric" maxLength={16} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
+      <TextField label="Tempat lahir" required={req('birthPlace')} {...form.bind('birthPlace')} />
+      <DateField label="Tanggal lahir" required={req('birthDate')} max={clock} {...form.bind('birthDate')} />
+      <RadioCards label="Jenis kelamin" required={req('gender')} options={GENDERS} {...form.bind('gender')} />
+      <SelectField label="Status perkawinan" required={req('maritalStatus')} options={MARITAL} {...form.bind('maritalStatus')} />
+      <TextAreaField label="Alamat KTP" required={req('address')} span {...form.bind('address')} />
+      <TextField label="Nomor ponsel" required={req('phone')} inputMode="tel" disabled={contactField === 'phone'} hint={contactField === 'phone' ? 'Kontak terverifikasi.' : ''} {...form.bind('phone')} />
+      <TextField label="Email" required={req('email')} type="email" disabled={contactField === 'email'} hint={contactField === 'email' ? 'Kontak terverifikasi.' : ''} {...form.bind('email')} />
+    </FormGrid>
+  )
+}
+
+// Job and income are separate pieces (rendered inside a FormGrid) so the setup can put income first.
+export function JobFields({ form, required = [] }) {
+  const req = (k) => required.includes(k)
+  return (
+    <>
+      <SelectField label="Jenis pekerjaan" required={req('occupation')} options={OCCUPATIONS} span {...form.bind('occupation')} />
+      <TextField label="Nama perusahaan / usaha" required={req('companyName')} {...form.bind('companyName')} />
+      <TextField label="Jabatan / bidang usaha" required={req('jobTitle')} {...form.bind('jobTitle')} />
+      <NumberField label="Lama bekerja" required={req('workYears')} suffix="tahun" {...form.bind('workYears')} />
+      <NumberField label="Tambahan bulan" required={req('workMonths')} suffix="bulan" {...form.bind('workMonths')} />
+    </>
+  )
+}
+
+export function IncomeFields({ form, required = [] }) {
+  const req = (k) => required.includes(k)
+  const v = form.values
+  return (
+    <>
+      <MoneyField label="Penghasilan bulanan" required={req('monthlyIncome')} span {...form.bind('monthlyIncome')} />
+      <CheckboxField label="Gabungkan pendapatan pasangan" span checked={v.jointIncome} onChange={(x) => form.setValues({ ...v, jointIncome: x, partnerIncome: x ? v.partnerIncome : '' })} />
+      {v.jointIncome && <MoneyField label="Penghasilan pasangan" required={req('partnerIncome')} span {...form.bind('partnerIncome')} />}
+      <MoneyField label="Cicilan kendaraan" optional {...form.bind('vehicleDebt')} />
+      <MoneyField label="Kartu kredit / paylater" optional {...form.bind('cardDebt')} />
+      <MoneyField label="Pinjaman lain" optional span hint="Dipakai untuk rasio cicilan di KPR Health." {...form.bind('otherDebt')} />
     </>
   )
 }

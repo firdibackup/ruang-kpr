@@ -653,11 +653,15 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (values.reminders && (!values.reminders.payment.length || !(values.reminders.channels.inApp || values.reminders.channels.email))) {
           fail('VALIDATION_FAILED', 'Pilih minimal satu jadwal pembayaran dan satu kanal.', 400)
         }
+        // Step 2 (Data pendukung): personal & employment live on the profile, reused by Take Over;
+        // KPR Health reads the mortgage's copy of the money fields.
+        const { personal, employment, ...core } = values
+        syncProfile(db, { personal, employment })
+        if (employment) m.finance = { ...m.finance, ...db.finance }
         const before = { ...m }
-        Object.assign(m, values)
+        Object.assign(m, core)
         applyMortgageRules(m, before)
         if (m.status === 'draft') m.setupStep = Math.min(3, Math.max(m.setupStep, step + 1))
-        if (values.finance) db.finance = { ...db.finance, ...values.finance }
         touch(db, m)
         return m
       }),
@@ -678,8 +682,10 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         const m = findMortgage(db, id)
         if (m.status !== 'draft') fail('INVALID_STATE_TRANSITION', 'Pemantauan sudah aktif.', 400)
         if (!confirmDataCorrect) fail('VALIDATION_FAILED', 'Centang konfirmasi data dulu.', 400)
-        // Reminder-only setup: everything else is optional and filled in later from My KPR.
-        const missing = ['bankName', 'currentPayment', 'dueDay'].filter((k) => m[k] == null || m[k] === '')
+        // Step 1 data (reminder + amortization) is required; Data pendukung is optional.
+        const required = ['bankName', 'originalPrincipal', 'currentPayment', 'originalTenorMonths', 'startDate', 'dueDay', 'remainingTenorMonths', 'currentRateBps', 'currentRateType']
+        const missing = required.filter((k) => m[k] == null || m[k] === '')
+        if (m.scheme !== 'sharia' && !(m.outstandingPrincipal > 0)) missing.push('outstandingPrincipal')
         if (m.currentRateType === 'fixed' && !m.fixedUntil) missing.push('fixedUntil')
         if (!m.reminders?.payment?.length || !(m.reminders.channels.inApp || m.reminders.channels.email)) missing.push('reminders')
         if (missing.length) fail('VALIDATION_FAILED', 'Data KPR belum lengkap.', 400, { details: { missing } })

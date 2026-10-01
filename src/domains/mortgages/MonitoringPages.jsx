@@ -47,7 +47,7 @@ export function MonitoringIntro() {
               </li>
             ))}
           </ul>
-          <p className="text-[13px] leading-5 text-ink-3">Cukup 3 langkah singkat. Data lain bisa dilengkapi nanti.</p>
+          <p className="text-[13px] leading-5 text-ink-3">3 langkah: data KPR, data pendukung (opsional, bisa dilewati), lalu reminder.</p>
           {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Button onClick={start} disabled={pending} aria-busy={pending}>

@@ -233,7 +233,7 @@ export function RateTab() {
           {unknown && (
             <span className="flex flex-wrap items-center gap-x-2 text-base font-bold text-warning-text">
               Jenis bunga belum diketahui
-              <Link to="/monitoring/setup/2?edit=rate" className="flex min-h-11 items-center text-[13px] text-primary underline">
+              <Link to="/monitoring/setup/1?edit=rate" className="flex min-h-11 items-center text-[13px] text-primary underline">
                 Isi jenis bunga
               </Link>
             </span>
@@ -256,7 +256,7 @@ export function RateTab() {
               ) : (
                 <span className="flex flex-wrap items-center gap-2 text-base font-bold text-warning-text">
                   Estimasi floating belum diisi
-                  <Link to="/monitoring/setup/2?edit=rate" className="text-[13px] text-primary underline">
+                  <Link to="/monitoring/setup/1?edit=rate" className="text-[13px] text-primary underline">
                     Edit
                   </Link>
                 </span>
@@ -322,9 +322,16 @@ export function PropertyTab() {
     <section className="grid grid-cols-1 gap-7 rounded-card bg-card p-6 shadow-card md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] sm:p-7" aria-label="Properti">
       <div className="flex min-w-0 flex-col gap-2.5">
         <h2 className="text-xl font-extrabold">{p.address || 'Alamat belum diisi'}</h2>
-        <span className="text-sm text-ink-3">
-          {labelOf(PROPERTY_TYPES, p.type)} · LT {p.landArea ?? '–'} / LB {p.buildingArea ?? '–'} · {labelOf(CERTIFICATES, p.certificateType)}
-        </span>
+        {p.type ? (
+          <span className="text-sm text-ink-3">
+            {labelOf(PROPERTY_TYPES, p.type)} · LT {p.landArea ?? '–'} / LB {p.buildingArea ?? '–'} · {labelOf(CERTIFICATES, p.certificateType)}
+          </span>
+        ) : (
+          // Skipped in the setup (Data pendukung): fill it there.
+          <Link to="/monitoring/setup/2/properti?edit=property" className="flex min-h-11 w-fit items-center text-sm font-bold text-primary underline">
+            Lengkapi data properti
+          </Link>
+        )}
         <SummaryRows
           className="mt-2"
           rows={

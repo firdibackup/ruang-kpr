@@ -383,7 +383,8 @@ export function createSeed(scenario = 'guest') {
     case 'guest':
       return base(scenario, { session: { status: 'guest', verification: null }, user: null, profile: {}, finance: {} })
     case 'fresh':
-      return base(scenario, { profile: { fullName: USER.name, phone: USER.contact } })
+      // A new account: only what registration collected. No finance until the user types it.
+      return base(scenario, { profile: { fullName: USER.name, phone: USER.contact }, finance: {} })
     case 'application_primary_draft_step_3':
       return base(scenario, {
         applications: [primaryApplication({ status: 'draft', currentStep: 3, data: { ...PRIMARY_DATA, property: { purchaseType: 'new_from_developer' }, loan: {} } })],

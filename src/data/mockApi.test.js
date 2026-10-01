@@ -95,17 +95,16 @@ describe('primary application', () => {
 })
 
 describe('monitoring', () => {
-  const step1 = { bankName: 'Bank ABC', currentPayment: 4_127_324, dueDay: 22 }
-  const fixedRate = { currentRateType: 'fixed', fixedUntil: '2026-12-22', currentRateBps: 550, remainingTenorMonths: 183, estimatedFloatingRateBps: 900 }
+  const step1 = { bankName: 'Bank ABC', scheme: 'conventional', originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22 }
+  const fixedRate = { currentRateType: 'fixed', fixedUntil: '2026-12-22', currentRateBps: 550, remainingTenorMonths: 183, estimatedFloatingRateBps: 900, outstandingPrincipal: null, outstandingEstimated: null }
 
-  it('reminder-only setup: 5 fields activate; sisa pinjaman is derived, never asked', async () => {
+  it('step 1 KPR data activates with Data pendukung skipped; sisa pokok is estimated when not known', async () => {
     mockControls.reset('fresh')
     const m = await api.mortgages.createSetup()
-    await api.mortgages.saveSetupStep(m.id, { step: 1, values: step1 })
-    const saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: fixedRate })
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { ...step1, ...fixedRate } })
     expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 550, termMonths: 183 }))
     expect(saved.outstandingEstimated).toBe(true)
-    expect(saved.setupStep).toBe(3)
+    expect((await api.mortgages.saveSetupStep(m.id, { step: 2, values: {} })).setupStep).toBe(3) // Lewati semua
     await api.mortgages.saveSetupStep(m.id, { step: 3, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
     const r = await api.mortgages.activate(m.id, { confirmDataCorrect: true })
     expect(r.applicationCreated).toBe(false)
@@ -114,30 +113,39 @@ describe('monitoring', () => {
     expect(selectHomeState(snap, snap.clock).state).toBe('mortgage_active_warning')
   })
 
+  it('reminder-only data no longer activates: amortization data is required', async () => {
+    mockControls.reset('fresh')
+    const m = await api.mortgages.createSetup()
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: { bankName: 'Bank ABC', currentPayment: 4_127_324, dueDay: 22, currentRateType: 'floating' } })
+    await expect(api.mortgages.activate(m.id, { confirmDataCorrect: true })).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: { missing: expect.arrayContaining(['originalPrincipal', 'currentRateBps', 'outstandingPrincipal']) } })
+  })
+
   it('official sisa pinjaman wins until cleared; floating clears the fixed-only fields', async () => {
     mockControls.reset('fresh')
     const m = await api.mortgages.createSetup()
-    await api.mortgages.saveSetupStep(m.id, { step: 1, values: step1 })
-    await api.mortgages.saveSetupStep(m.id, { step: 2, values: fixedRate })
-    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { outstandingPrincipal: 500_000_000, outstandingEstimated: false } })
-    let saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateBps: 600 } })
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: { ...step1, ...fixedRate, outstandingPrincipal: 500_000_000, outstandingEstimated: false } })
+    let saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { currentRateBps: 600 } })
     expect(saved).toMatchObject({ outstandingPrincipal: 500_000_000, outstandingEstimated: false })
-    saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { outstandingPrincipal: null, outstandingEstimated: null } })
+    saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { outstandingPrincipal: null, outstandingEstimated: null } })
     expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 600, termMonths: 183 }))
     expect(saved.outstandingEstimated).toBe(true)
-    saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateType: 'floating' } })
+    saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { currentRateType: 'floating' } })
     expect(saved).toMatchObject({ fixedUntil: null, estimatedFloatingRateBps: null })
   })
 
-  it('"Belum tahu" activates with payment reminders; fixed without an end date does not', async () => {
+  it('Data pendukung: personal & employment go to the profile, income to the KPR, property to the KPR', async () => {
     mockControls.reset('fresh')
     const m = await api.mortgages.createSetup()
-    await api.mortgages.saveSetupStep(m.id, { step: 1, values: step1 })
-    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateType: 'fixed', fixedUntil: null } })
-    await api.mortgages.saveSetupStep(m.id, { step: 3, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
-    await expectCode(api.mortgages.activate(m.id, { confirmDataCorrect: true }), 'VALIDATION_FAILED')
-    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateType: null } })
-    await expect(api.mortgages.activate(m.id, { confirmDataCorrect: true })).resolves.toMatchObject({ applicationCreated: false })
+    const personal = { fullName: 'Firdi Audi', nik: '3174012345678901' }
+    const employment = { occupation: 'private_employee', companyName: 'PT Nusantara Digital', monthlyIncome: 18_000_000 }
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { personal, employment, property: { type: 'landed_house', address: 'Griya Asri Blok C2' } } })
+    expect(saved).not.toHaveProperty('personal')
+    expect(saved).not.toHaveProperty('employment')
+    expect(saved.finance.monthlyIncome).toBe(18_000_000)
+    expect(saved.property.type).toBe('landed_house')
+    const snap = await api.dashboard.getSnapshot()
+    expect(snap.profile).toMatchObject({ ...personal, occupation: 'private_employee', companyName: 'PT Nusantara Digital' })
+    expect(snap.finance.monthlyIncome).toBe(18_000_000)
   })
 
   it('saving unrelated fields keeps an existing sisa pinjaman stable', async () => {

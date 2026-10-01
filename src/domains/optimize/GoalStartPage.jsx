@@ -36,7 +36,7 @@ export function GoalStartPage() {
           tone="warn"
           title="Data KPR belum cukup untuk simulasi"
           action={
-            <Link to="/monitoring/setup/2?edit=explore" className="text-[13px] font-bold text-primary underline">
+            <Link to="/monitoring/setup/1?edit=explore" className="text-[13px] font-bold text-primary underline">
               Lengkapi data bunga
             </Link>
           }

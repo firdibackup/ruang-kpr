@@ -52,7 +52,7 @@ const router = createBrowserRouter([
           { path: 'apply/primary/success', element: <PrimarySuccess /> },
           { path: 'apply/primary/:step/:productId?', element: <PrimaryWizard /> },
           { path: 'monitoring/intro', element: <MonitoringIntro /> },
-          { path: 'monitoring/setup/:step', element: <MortgageSetupWizard /> },
+          { path: 'monitoring/setup/:step/:part?', element: <MortgageSetupWizard /> },
           { path: 'monitoring/success', element: <MonitoringSuccess /> },
           { path: 'optimize/intro', element: <OptimizeIntro /> },
           { path: 'optimize/start', element: <GoalStartPage /> },

@@ -1570,6 +1570,8 @@ function TakeoverReview({ app, navigate }) {
       title: "Data Pribadi",
       lines: [p.fullName, `${p.phone} · ${p.email}`],
       edit: edit("/optimize/1"),
+      // Starting from a monitored KPR skips these steps; data skipped in its setup is still missing here.
+      warn: p.fullName && /^\d{16}$/.test(p.nik ?? "") ? "" : "Lengkapi data pribadi.",
     },
     {
       title: "Pekerjaan & Penghasilan",
@@ -1578,6 +1580,7 @@ function TakeoverReview({ app, navigate }) {
         `Penghasilan ${rupiah(e.monthlyIncome)}`,
       ],
       edit: edit("/optimize/1/pekerjaan"),
+      warn: e.occupation && e.monthlyIncome > 0 ? "" : "Lengkapi pekerjaan & penghasilan.",
     },
     {
       title: "KPR Lama",
@@ -1603,6 +1606,7 @@ function TakeoverReview({ app, navigate }) {
           : "Nilai properti belum diisi",
       ],
       edit: edit("/optimize/4"),
+      warn: pr.propertyType && pr.address ? "" : "Lengkapi data properti.",
     },
     {
       title: "Tujuan",

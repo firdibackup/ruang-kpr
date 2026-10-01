@@ -77,7 +77,7 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
                 ]}
               />
             ) : (
-              <Notice tone="warn" title="Estimasi floating belum diisi" action={<Link to="/monitoring/setup/2?edit=home" className="text-[13px] font-bold text-primary underline">Lengkapi Data Bunga</Link>}>
+              <Notice tone="warn" title="Estimasi floating belum diisi" action={<Link to="/monitoring/setup/1?edit=home" className="text-[13px] font-bold text-primary underline">Lengkapi Data Bunga</Link>}>
                 Isi estimasi bunga floating agar kami bisa menghitung dampak ke cicilan kamu.
               </Notice>
             )}
@@ -105,7 +105,7 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
       )}
 
       {d.mode === null && (
-        <Notice tone="warn" title="Jenis bunga belum diketahui" action={<Link to="/monitoring/setup/2?edit=home" className="text-[13px] font-bold text-primary underline">Isi jenis bunga</Link>}>
+        <Notice tone="warn" title="Jenis bunga belum diketahui" action={<Link to="/monitoring/setup/1?edit=home" className="text-[13px] font-bold text-primary underline">Isi jenis bunga</Link>}>
           Cek di aplikasi bank supaya kami bisa mengingatkan sebelum floating.
         </Notice>
       )}

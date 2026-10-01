@@ -1,7 +1,13 @@
 // Pure validators for the monitoring setup (doc 02 MON-01…MON-05). Values are form strings.
+import { countDueDatesBetween } from '@/calculations/dates'
 import { toBps, toInt, toMoney } from '@/lib/format'
 
 const minLen = (v, n) => String(v ?? '').trim().length >= n
+const blank = (v) => String(v ?? '').trim() === ''
+
+// Data pendukung (setup step 2) is optional: only `required` keys must be filled; any other field is checked
+// only once something is typed, so Simpan & Lanjutkan never blocks on what Lewati would leave empty.
+export const filledOnly = (errors, v, required = []) => Object.fromEntries(Object.entries(errors).filter(([k]) => required.includes(k) || !blank(v[k])))
 
 const rateError = (v, required = true) => {
   const bps = toBps(v)
@@ -11,43 +17,67 @@ const rateError = (v, required = true) => {
 
 export const FIXED_PASSED = 'Tanggal ini sudah lewat, berarti bunga kamu sudah floating.'
 
-// Setup step 1 (reminder-only). `editing` = active KPR edited from My KPR, which also shows pinjaman awal.
-export function validateLoanStep(v, { editing = false, outstanding = null } = {}) {
+// Sisa tenor from tenor awal and tanggal akad, for "Tidak tahu sisa pokok". Null until both are valid.
+export function remainingFromStart(v, today) {
+  const tenor = toInt(v.originalTenorMonths)
+  const due = toInt(v.dueDay)
+  if (!(tenor > 0) || !v.startDate || v.startDate > today || !(due >= 1 && due <= 31)) return null
+  return tenor - countDueDatesBetween({ startDate: v.startDate, today, dueDay: due })
+}
+
+// Setup step 1: everything reminders and amortization need. rateStatus: 'fixed' | 'floating'.
+export function validateLoanStep(v, { today }) {
   const e = {}
   if (!v.bankName) e.bankName = 'Pilih bank.'
   if (v.bankName === 'Bank lainnya' && !minLen(v.bankOther, 2)) e.bankOther = 'Isi nama bank.'
-  if (!(toMoney(v.currentPayment) > 0)) e.currentPayment = 'Isi cicilan per bulan.'
+  if (!v.scheme) e.scheme = 'Pilih jenis KPR.'
+  const principal = toMoney(v.originalPrincipal)
+  if (!(principal > 0)) e.originalPrincipal = 'Isi jumlah pinjaman awal.'
+  if (!(toMoney(v.currentPayment) > 0)) e.currentPayment = 'Isi cicilan bulanan.'
+  const tenor = toInt(v.originalTenorMonths)
+  if (!(tenor >= 12 && tenor <= 360)) e.originalTenorMonths = 'Tenor harus 12–360 bulan.'
+  if (!v.startDate) e.startDate = 'Pilih tanggal akad.'
+  else if (v.startDate > today) e.startDate = 'Tanggal akad tidak boleh di masa depan.'
   const due = toInt(v.dueDay)
   if (!(due >= 1 && due <= 31)) e.dueDay = 'Isi tanggal 1–31.'
-  if (editing) {
-    const principal = toMoney(v.originalPrincipal)
-    if (principal !== null && !(principal > 0)) e.originalPrincipal = 'Isi pinjaman awal lebih dari 0, atau kosongkan.'
-    else if (principal > 0 && outstanding > principal) e.originalPrincipal = 'Pinjaman awal tidak boleh lebih kecil dari sisa pinjaman.'
+
+  if (!v.rateStatus) e.rateStatus = 'Pilih jenis bunga.'
+  const r = rateError(v.currentRate)
+  if (r) e.currentRate = r
+  if (v.rateStatus === 'fixed') {
+    if (!v.fixedUntil) e.fixedUntil = 'Pilih tanggal fixed berakhir.'
+    else if (v.fixedUntil <= today) e.fixedUntil = FIXED_PASSED
+    // Amortization after the fixed period needs it; an estimate is fine.
+    const f = rateError(v.floatingRate)
+    if (f) e.floatingRate = f
+  }
+
+  if (!v.knowsOutstanding) e.knowsOutstanding = 'Pilih salah satu.'
+  if (v.knowsOutstanding === 'yes') {
+    const out = toMoney(v.outstandingPrincipal)
+    if (!(out > 0)) e.outstandingPrincipal = 'Isi sisa pokok saat ini.'
+    else if (principal > 0 && out > principal) e.outstandingPrincipal = 'Sisa pokok tidak boleh lebih besar dari pinjaman awal.'
+    const rem = toInt(v.remainingTenorMonths)
+    if (!(rem >= 1 && rem <= (tenor || 360))) e.remainingTenorMonths = `Sisa tenor harus 1–${tenor || 360} bulan.`
+  }
+  if (v.knowsOutstanding === 'no' && !e.startDate && !e.originalTenorMonths && remainingFromStart(v, today) <= 0) {
+    e.startDate = 'Tanggal akad dan tenor menunjukkan KPR sudah selesai.'
   }
   return e
 }
 
-// Setup step 2. rateStatus: 'fixed' | 'floating' | 'unknown'. The estimate fields are optional: checked only when filled.
-export function validateRateStep(v, { today }) {
+// Setup step 2, Properti section (optional as a whole). The value may be left empty.
+export function validatePropertyStep(v) {
   const e = {}
-  if (!v.rateStatus) e.rateStatus = 'Pilih salah satu.'
-  if (v.rateStatus === 'fixed') {
-    if (!v.fixedUntil) e.fixedUntil = 'Pilih tanggal fixed berakhir.'
-    else if (v.fixedUntil <= today) e.fixedUntil = FIXED_PASSED
-    const f = rateError(v.floatingRate, false)
-    if (f) e.floatingRate = f
-  }
-  const r = rateError(v.currentRate, false)
-  if (r) e.currentRate = r
-  const years = toInt(v.tenorYears)
-  const months = toInt(v.tenorMonths)
-  if (months !== null && months > 11) e.tenorMonths = 'Isi 0–11 bulan.'
-  else if (years !== null || months !== null) {
-    const total = (years ?? 0) * 12 + (months ?? 0)
-    if (!(total >= 1 && total <= 360)) e.tenorYears = 'Sisa tenor harus 1 bulan sampai 30 tahun.'
-  }
-  const out = toMoney(v.outstanding)
-  if (out !== null && !(out > 0)) e.outstanding = 'Isi sisa pinjaman lebih dari 0, atau kosongkan.'
+  if (!v.type) e.type = 'Pilih jenis properti.'
+  if (!v.city) e.city = 'Pilih kota/kabupaten.'
+  if (!minLen(v.address, 5)) e.address = 'Isi alamat properti.'
+  if (v.type !== 'apartment' && !(toInt(v.landArea) > 0)) e.landArea = 'Isi luas tanah.'
+  if (!(toInt(v.buildingArea) > 0)) e.buildingArea = 'Isi luas bangunan.'
+  if (!v.certificateType) e.certificateType = 'Pilih status sertifikat.'
+  if (!minLen(v.certificateOwner, 2)) e.certificateOwner = 'Isi nama pemilik sertifikat.'
+  const value = toMoney(v.estimatedValue)
+  if (value !== null && !(value > 0)) e.estimatedValue = 'Isi nilai lebih dari 0, atau kosongkan.'
   return e
 }
 

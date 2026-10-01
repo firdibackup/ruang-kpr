@@ -22,7 +22,7 @@ function PartialSchedule({ d }) {
   const navigate = useNavigate()
   if (d.scheduleError) {
     return (
-      <Notice tone="bad" title="Jadwal amortisasi belum dapat dihitung." action={<Button size="xs" onClick={() => navigate('/monitoring/setup/2?edit=mykpr')}>Perbaiki Data</Button>}>
+      <Notice tone="bad" title="Jadwal amortisasi belum dapat dihitung." action={<Button size="xs" onClick={() => navigate('/monitoring/setup/1?edit=mykpr')}>Perbaiki Data</Button>}>
         {d.scheduleError.message} Periksa sisa pokok, tenor, dan periode bunga.
       </Notice>
     )
@@ -31,7 +31,7 @@ function PartialSchedule({ d }) {
     <section className="flex flex-col items-start gap-2.5 rounded-card border border-warning-border bg-card p-7">
       <h2 className="text-[17px] font-extrabold">Jadwal belum bisa dihitung lengkap.</h2>
       <p className="text-sm text-ink-3">Data yang belum tersedia: {d.scheduleMissing.join(', ')}. Kami tidak menampilkan jadwal perkiraan tanpa data ini.</p>
-      <Button size="md" onClick={() => navigate('/monitoring/setup/2?edit=mykpr')}>
+      <Button size="md" onClick={() => navigate('/monitoring/setup/1?edit=mykpr')}>
         Lengkapi Data Bunga
       </Button>
     </section>

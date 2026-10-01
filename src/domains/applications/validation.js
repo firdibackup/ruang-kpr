@@ -1,7 +1,7 @@
 // Pure validators `(values, ctx) => errors`. Form values are strings while typing.
 // Frontend validation is UX only; the backend must validate again.
 import { isEmail, isPhone } from '@/domains/session/validation'
-import { digitsOnly, toMoney } from '@/lib/format'
+import { digitsOnly, intInput, moneyInput, toInt, toMoney } from '@/lib/format'
 
 const blank = (v) => String(v ?? '').trim() === ''
 const minLen = (v, n) => String(v ?? '').trim().length >= n
@@ -64,6 +64,15 @@ export function validatePrimaryLoan(v) {
   return e
 }
 
+// Profile + finance → the form strings of Data pribadi and Pekerjaan & penghasilan (Profile edit, KPR setup).
+export function profileFormValues(p = {}, f = {}) {
+  return {
+    fullName: p.fullName ?? '', nik: p.nik ?? '', birthPlace: p.birthPlace ?? '', birthDate: p.birthDate ?? '', gender: p.gender ?? '', maritalStatus: p.maritalStatus ?? '', address: p.address ?? '', phone: p.phone ?? '', email: p.email ?? '',
+    occupation: p.occupation ?? '', companyName: p.companyName ?? '', jobTitle: p.jobTitle ?? '', workYears: intInput(p.workYears), workMonths: intInput(p.workMonths), monthlyIncome: moneyInput(f.monthlyIncome), jointIncome: f.jointIncome ?? false, partnerIncome: moneyInput(f.partnerIncome),
+    vehicleDebt: moneyInput(f.vehicleDebt), cardDebt: moneyInput(f.cardDebt), otherDebt: moneyInput(f.otherDebt),
+  }
+}
+
 export function toPersonal(v) {
   return {
     fullName: v.fullName.trim(),
@@ -83,8 +92,8 @@ export function toEmployment(v) {
     occupation: v.occupation,
     companyName: v.companyName.trim(),
     jobTitle: v.jobTitle.trim(),
-    workYears: Number(v.workYears),
-    workMonths: Number(v.workMonths),
+    workYears: toInt(v.workYears),
+    workMonths: toInt(v.workMonths),
     monthlyIncome: toMoney(v.monthlyIncome),
     jointIncome: v.jointIncome,
     partnerIncome: v.jointIncome ? toMoney(v.partnerIncome) : null,
