@@ -103,6 +103,58 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
         </section>
       )}
 
+      {/* Opportunity leads the dashboard; only the fixed-rate warning sits above it. */}
+      <section className="grid grid-cols-1 gap-4 rounded-card border border-[#cfdcf3] bg-[#f3f7fe] p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:gap-x-7" aria-labelledby="opp-title">
+        <div className="flex flex-col gap-4">
+          <IconBox icon={SparklesIcon} tone="white" size="lg" />
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-extrabold text-ink-3">Peluang</span>
+            <h2 id="opp-title" className="text-xl leading-[27px] font-extrabold text-pretty">
+              {opp?.cheaperProgramCount ? 'Ada ruang untuk cicilan lebih ringan.' : 'Pantau peluang untuk KPR kamu.'}
+            </h2>
+            <p className="text-sm leading-[21px] text-ink-3">Potensi dari KPR kamu saat ini. Lihat biaya pindah dan break-even, bukan hanya bunga promo.</p>
+          </div>
+        </div>
+        {exploreLoading && !explore ? (
+          <div className="flex flex-col gap-2 md:row-span-2" aria-busy="true">
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 md:row-span-2">
+            <OpportunityTile
+              to="/explore"
+              label="POTENSI TAKE OVER"
+              edge="var(--color-primary), var(--color-chart-interest)"
+              value={opp?.cheaperProgramCount ? `−${rupiahShort(opp.bestMonthlySaving)}` : 'Belum ada'}
+              unit={opp?.cheaperProgramCount ? '/ bulan' : ''}
+              tone={opp?.cheaperProgramCount ? 'ok' : 'mute'}
+              note={
+                opp?.cheaperProgramCount
+                  ? `${opp.comparedTo === 'floating_estimate' ? 'Dibanding estimasi cicilan floating' : 'Dibanding cicilan sekarang'} · ${opp.bestBankName} ${percentBps(opp.bestFixedRateBps)} fixed ${opp.bestFixedMonths / 12} th${opp.bestBreakEvenMonth ? ` · break-even ${opp.bestBreakEvenMonth} bulan` : ''}`
+                  : 'Belum ada program yang lebih hemat setelah biaya pindah, berdasarkan katalog terbaru.'
+              }
+            />
+            <OpportunityTile
+              to={opp?.maxGrossTopup != null ? '/explore' : '/my-kpr/property?edit=1'}
+              label="POTENSI REFINANCING"
+              edge="var(--color-success-strong), color-mix(in srgb, var(--color-success-strong) 30%, white)"
+              value={opp?.maxGrossTopup != null ? rupiahShort(opp.maxGrossTopup) : 'Belum dapat dihitung'}
+              unit={opp?.maxGrossTopup != null ? 'dana kotor maksimum' : ''}
+              tone={opp?.maxGrossTopup != null ? 'default' : 'warn'}
+              note={opp?.maxGrossTopup != null ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% − sisa pokok ${rupiahShort(m.outstandingPrincipal)}` : 'Lengkapi nilai properti untuk melihat potensi dana cair.'}
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-3 md:self-end">
+          <Button className="w-full md:w-fit" onClick={() => navigate('/explore')}>
+            Eksplorasi Pilihan
+            <ArrowRightIcon aria-hidden />
+          </Button>
+          <Disclaimer>Estimasi, bukan penawaran bank. Simulasi dulu, tidak langsung mengajukan.</Disclaimer>
+        </div>
+      </section>
+
       {isFloating && (
         <HeroCard className="grid grid-cols-1 items-center gap-7 md:grid-cols-2">
           <div className="flex flex-col gap-3.5">
@@ -140,7 +192,7 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
         </section>
       )}
 
-      {/* PRD §11.1 order on one column (Health → Next Payment → KPR → Opportunity); two columns on desktop. */}
+      {/* Health → Next Payment → KPR → Agenda on one column; two columns on desktop. */}
       <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:items-start">
         <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
           <Panel className="order-1 flex-row items-center gap-6 xl:order-none">
@@ -219,52 +271,7 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
             </div>
           </Panel>
 
-          <section className="order-4 flex flex-col gap-4 rounded-card border border-[#cfdcf3] bg-[#f3f7fe] p-6 xl:order-none" aria-labelledby="opp-title">
-            <IconBox icon={SparklesIcon} tone="white" size="lg" />
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-extrabold text-ink-3">Peluang</span>
-              <h2 id="opp-title" className="text-xl leading-[27px] font-extrabold text-pretty">
-                {opp?.cheaperProgramCount ? 'Ada ruang untuk cicilan lebih ringan.' : 'Pantau peluang untuk KPR kamu.'}
-              </h2>
-              <p className="text-sm leading-[21px] text-ink-3">Potensi dari KPR kamu saat ini. Lihat biaya pindah dan break-even, bukan hanya bunga promo.</p>
-            </div>
-            {exploreLoading && !explore ? (
-              <div className="flex flex-col gap-2" aria-busy="true">
-                <Skeleton className="h-24 rounded-xl" />
-                <Skeleton className="h-24 rounded-xl" />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <OpportunityTile
-                  to="/explore"
-                  label="POTENSI TAKE OVER"
-                  value={opp?.cheaperProgramCount ? `−${rupiahShort(opp.bestMonthlySaving)}` : 'Belum ada'}
-                  unit={opp?.cheaperProgramCount ? '/ bulan' : ''}
-                  tone={opp?.cheaperProgramCount ? 'ok' : 'mute'}
-                  note={
-                    opp?.cheaperProgramCount
-                      ? `${opp.comparedTo === 'floating_estimate' ? 'Dibanding estimasi cicilan floating' : 'Dibanding cicilan sekarang'} · ${opp.bestBankName} ${percentBps(opp.bestFixedRateBps)} fixed ${opp.bestFixedMonths / 12} th${opp.bestBreakEvenMonth ? ` · break-even ${opp.bestBreakEvenMonth} bulan` : ''}`
-                      : 'Belum ada program yang lebih hemat setelah biaya pindah, berdasarkan katalog terbaru.'
-                  }
-                />
-                <OpportunityTile
-                  to={opp?.maxGrossTopup != null ? '/explore' : '/my-kpr/property?edit=1'}
-                  label="POTENSI REFINANCING"
-                  value={opp?.maxGrossTopup != null ? rupiahShort(opp.maxGrossTopup) : 'Belum dapat dihitung'}
-                  unit={opp?.maxGrossTopup != null ? 'dana kotor maksimum' : ''}
-                  tone={opp?.maxGrossTopup != null ? 'default' : 'warn'}
-                  note={opp?.maxGrossTopup != null ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% − sisa pokok ${rupiahShort(m.outstandingPrincipal)}` : 'Lengkapi nilai properti untuk melihat potensi dana cair.'}
-                />
-              </div>
-            )}
-            <Button className="w-full" onClick={() => navigate('/explore')}>
-              Eksplorasi Pilihan
-              <ArrowRightIcon aria-hidden />
-            </Button>
-            <Disclaimer>Estimasi, bukan penawaran bank. Simulasi dulu, tidak langsung mengajukan.</Disclaimer>
-          </section>
-
-          <Panel className="order-5 gap-3.5 xl:order-none">
+          <Panel className="order-4 gap-3.5 xl:order-none">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-extrabold">Agenda terdekat</h2>
               <CalendarIcon className="size-5" aria-hidden />
@@ -298,9 +305,14 @@ export function MonitoringDashboard({ mortgage: m, derived: d, clock, onChanged 
   )
 }
 
-function OpportunityTile({ to, label, value, unit, note, tone }) {
+function OpportunityTile({ to, label, value, unit, note, tone, edge }) {
+  // Gradient ring: card fill paints the padding box, the edge gradient shows through the transparent border.
   return (
-    <Link to={to} className="flex flex-col gap-1.5 rounded-xl border border-card bg-card px-4 py-3.5 hover:border-primary">
+    <Link
+      to={to}
+      className="flex flex-col gap-1.5 rounded-xl border-[1.5px] border-transparent px-4 py-3.5 transition-shadow hover:shadow-card"
+      style={{ background: `linear-gradient(var(--color-card) 0 0) padding-box, linear-gradient(135deg, ${edge}) border-box` }}
+    >
       <span className="flex w-full items-center justify-between gap-2">
         <span className="text-xs font-extrabold tracking-[0.4px] text-primary">{label}</span>
         <ChevronRightIcon className="size-4" aria-hidden />
