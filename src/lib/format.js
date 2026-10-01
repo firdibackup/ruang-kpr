@@ -24,6 +24,9 @@ export function rupiahShort(n) {
   return `${sign}Rp${a}`
 }
 
+// Plafon, house price and remaining interest read as a ballpark: floored to Rp10 jt (callers keep exact Rupiah).
+export const rupiahApprox = (n) => `± ${rupiahShort(n >= 1e7 ? Math.floor(n / 1e7) * 1e7 : n)}`
+
 export const percentBps = (bps, digits = 2) =>
   bps == null ? EMPTY : `${(bps / 100).toLocaleString('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`
 
