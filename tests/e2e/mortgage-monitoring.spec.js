@@ -70,6 +70,18 @@ test('monitoring: 3-step reminder setup (fixed + perkiraan) → active dashboard
   await expect(page.getByText('Mulai periode floating — estimasi 9,00%')).toBeVisible()
 })
 
+test('old setup draft resumes on the Reminder step in 3-step language', async ({ page }) => {
+  await useScenario(page, 'mortgage_setup_step_3', '/')
+  await expect(page.getByText('Bagian 3 dari 3 · Reminder')).toBeVisible()
+  await page.getByRole('button', { name: 'Lanjutkan Pengaturan' }).click()
+  await expect(page).toHaveURL(/monitoring\/setup\/3/)
+  await expect(page.getByText('Yang akan kami ingatkan')).toBeVisible()
+  await page.goto('/monitoring/setup/6?edit=review') // link from the old 6-step setup
+  await expect(page).toHaveURL(/monitoring\/setup\/3$/)
+  await page.goto('/my-kpr')
+  await expect(page.locator('main ol > li')).toHaveText([/KPR kamu/, /Bunga/, /Reminder/])
+})
+
 test('warning & partial states: H-90 warning is first, partial rate shows no fake table', async ({ page }) => {
   await useScenario(page, 'mortgage_active_h90', '/')
   await expect(page.getByText('Peringatan bunga · H-90')).toBeVisible()

@@ -27,7 +27,7 @@ import { dateShort, firstName, rupiah, tenorLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/AppShell";
 import { ConfirmDialog, FormDialog } from "@/components/shared/dialogs";
-import { StatusStepper, stepPercent } from "@/components/shared/progress";
+import { StatusStepper } from "@/components/shared/progress";
 import {
   Chip,
   ErrorPanel,
@@ -47,7 +47,11 @@ import {
   trackerSteps,
 } from "@/domains/applications/meta";
 import { deriveMortgage } from "@/domains/mortgages/derive";
-import { SETUP_STEPS } from "@/domains/mortgages/setupMeta";
+import {
+  SETUP_PERCENT,
+  SETUP_STEPS,
+  setupStepOf,
+} from "@/domains/mortgages/setupMeta";
 import { MonitoringDashboard } from "./MonitoringDashboard";
 import { selectHomeState } from "./selectHomeState";
 
@@ -475,7 +479,7 @@ function DraftHero({ app, onDeleted }) {
 function MortgageDraftHero({ mortgage, onDeleted }) {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
-  const step = Math.min(mortgage.setupStep, 6);
+  const step = setupStepOf(mortgage);
   return (
     <HeroCard className="grid gap-7 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="flex min-w-0 flex-col gap-3.5">
@@ -487,10 +491,10 @@ function MortgageDraftHero({ mortgage, onDeleted }) {
           Lanjutkan pengaturan KPR kamu
         </h2>
         <p className="text-[15px] font-semibold text-white/90">
-          Step {step} dari 6 — {SETUP_STEPS[step - 1]}
+          Bagian {step} dari 3 · {SETUP_STEPS[step - 1]}
         </p>
         <HeroProgress
-          value={stepPercent(step, 6)}
+          value={SETUP_PERCENT[step - 1]}
           label="Progres pengaturan KPR"
           className="max-w-[580px]"
         />

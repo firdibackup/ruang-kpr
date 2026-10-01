@@ -14,7 +14,7 @@ import { EmptyState, ErrorPanel, Panel, PageSkeleton } from '@/components/shared
 import { activeApplication } from '@/domains/home/selectHomeState'
 import { KprSwitch } from '@/domains/applications/KprSwitch'
 import { deriveMortgage } from './derive'
-import { SETUP_STEPS } from './setupMeta'
+import { SETUP_STEPS, setupStepOf } from './setupMeta'
 
 export function MyKprResolver() {
   const navigate = useNavigate()
@@ -24,6 +24,7 @@ export function MyKprResolver() {
   if (activeApplication(snap.applications)) return <Navigate to="/my-kpr/application" replace />
   if (snap.mortgages.some((m) => m.status === 'active')) return <Navigate to="/my-kpr/overview" replace />
   const draft = snap.mortgages.find((m) => m.status === 'draft')
+  const draftStep = draft ? setupStepOf(draft) : null
 
   return (
     <>
@@ -38,7 +39,7 @@ export function MyKprResolver() {
           <ol className="flex flex-col gap-1">
             {SETUP_STEPS.map((label, i) => {
               const n = i + 1
-              const state = n < draft.setupStep ? 'done' : n === draft.setupStep ? 'current' : 'todo'
+              const state = n < draftStep ? 'done' : n === draftStep ? 'current' : 'todo'
               return (
                 <li key={label} aria-current={state === 'current' ? 'step' : undefined} className={cn('flex items-center gap-3 rounded-xl px-3.5 py-3', state === 'current' && 'bg-secondary')}>
                   {state === 'done' ? <CircleCheckIcon className="size-5 text-success" aria-hidden /> : <CircleIcon className={cn('size-5', state === 'current' ? 'text-primary' : 'text-muted-foreground')} aria-hidden />}
@@ -49,7 +50,7 @@ export function MyKprResolver() {
             })}
           </ol>
           <div className="flex flex-wrap gap-3">
-            <Button size="md" onClick={() => navigate(`/monitoring/setup/${draft.setupStep}`)}>
+            <Button size="md" onClick={() => navigate(`/monitoring/setup/${draftStep}`)}>
               Lanjutkan Pengaturan
             </Button>
             <Button size="md" variant="neutral" className="text-danger" onClick={() => setConfirm(true)}>

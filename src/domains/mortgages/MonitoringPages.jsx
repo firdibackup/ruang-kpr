@@ -6,6 +6,7 @@ import { useResource } from '@/lib/hooks'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { ErrorPanel, Notice, PageSkeleton, Spinner } from '@/components/shared/ui'
+import { setupStepOf } from './setupMeta'
 
 export function MonitoringIntro() {
   const navigate = useNavigate()
@@ -22,7 +23,7 @@ export function MonitoringIntro() {
     setApiError('')
     try {
       const m = await api.mortgages.createSetup()
-      navigate(`/monitoring/setup/${Math.min(m.setupStep, 6)}`)
+      navigate(`/monitoring/setup/${setupStepOf(m)}`)
     } catch (e) {
       setApiError(e.message)
       setPending(false)
@@ -46,6 +47,7 @@ export function MonitoringIntro() {
               </li>
             ))}
           </ul>
+          <p className="text-[13px] leading-5 text-ink-3">Cukup 3 langkah singkat. Data lain bisa dilengkapi nanti.</p>
           {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Button onClick={start} disabled={pending} aria-busy={pending}>
