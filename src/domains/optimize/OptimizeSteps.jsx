@@ -90,6 +90,7 @@ import {
 } from "@/domains/home/MonitoringDashboard";
 import { applicationHealth, goalConditions } from "./insights";
 import { Aside, OptimizeHeader, modeName, useOptimize } from "./shared";
+import { TakeoverMilestone } from "./TakeoverMilestone";
 import {
   validateCapacity,
   validateEmploymentBasic,
@@ -151,6 +152,8 @@ export function OptimizeStepPage({ employment = false }) {
     return <Navigate to="/optimize/1" replace />;
 
   const fromReview = location.state?.from === "review";
+  // Set only by OldLoanPages right after the old loan is confirmed; "Lanjut" replaces it away.
+  const milestone = n === 3 && location.state?.milestone === 1;
   const next = (to) => navigate(fromReview && n !== 2 ? "/optimize/7" : to);
   const props = { app, clock: snap.clock, setApp, next, navigate, fromReview };
   const PN = modeName(app.optimizationMode);
@@ -176,8 +179,8 @@ export function OptimizeStepPage({ employment = false }) {
       <OptimizeHeader
         screen={screen}
         reached={takeoverScreenOf(app)}
-        title={`Pengajuan ${PN}`}
-        subtitle={subtitle}
+        title={milestone ? "Tahap 1 selesai" : `Pengajuan ${PN}`}
+        subtitle={milestone ? `${PN} · gambaran KPR lama kamu` : subtitle}
         back={fromReview ? "/optimize/7" : back}
       />
       {n === 1 &&
@@ -187,7 +190,16 @@ export function OptimizeStepPage({ employment = false }) {
           <PersonalStep {...props} />
         ))}
       {n === 2 && <OldLoanStep {...props} />}
-      {n === 3 && <CapacityStep {...props} />}
+      {milestone && (
+        <TakeoverMilestone
+          app={app}
+          clock={snap.clock}
+          onBack={() => navigate(back)}
+          // replace: reload or browser back from Kemampuan bayar never re-shows the milestone.
+          onNext={() => navigate("/optimize/3", { replace: true })}
+        />
+      )}
+      {n === 3 && !milestone && <CapacityStep {...props} />}
       {n === 4 && <PropertyStep {...props} />}
       {n === 5 && <GoalStep {...props} />}
       {n === 6 && <TakeoverDocsStep {...props} />}

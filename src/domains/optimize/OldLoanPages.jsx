@@ -40,7 +40,7 @@ export function OldLoanEstimatePage() {
         }),
       )
       toast('Estimasi dipakai sebagai pembanding.')
-      navigate('/optimize/3')
+      navigate('/optimize/3', { state: { milestone: 1 } })
     } catch (err) {
       toast.error(err.message)
       setSaving(false)
@@ -158,7 +158,7 @@ export function OldLoanOfficialPage() {
         }),
       )
       toast('Tersimpan.')
-      navigate('/optimize/3')
+      navigate('/optimize/3', { state: { milestone: 1 } })
     } catch (e) {
       setApiError(e.message)
       setSaving(false)

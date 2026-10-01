@@ -71,6 +71,17 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await page.getByLabel('Sisa tenor').fill('181')
   await save()
 
+  // Phase 1 milestone: what staying with the old bank looks like.
+  await expect(page).toHaveURL(/optimize\/3/)
+  await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toBeVisible()
+  await expect(page.getByText('45% selesai.')).toBeAttached()
+  await expect(page.getByText('Sisa bunga jika tetap')).toBeVisible()
+  await expect(page.getByText('Pokok sudah lunas')).toBeVisible()
+  await expect(page.getByText('Floating', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Lanjut ke Tahap 2' }).click()
+  await page.reload() // "Lanjut" replaced the milestone entry: reloading stays on the form
+  await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toHaveCount(0)
+
   await expect(page).toHaveURL(/optimize\/3/) // Kemampuan bayar
   // Going back to edit keeps the furthest saved percent instead of dropping it.
   await page.goto('/optimize/1/pekerjaan')
