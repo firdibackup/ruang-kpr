@@ -144,6 +144,7 @@ function ProfileForm({ snap }) {
     {
       fullName: p.fullName ?? '', nik: p.nik ?? '', birthPlace: p.birthPlace ?? '', birthDate: p.birthDate ?? '', gender: p.gender ?? '', maritalStatus: p.maritalStatus ?? '', address: p.address ?? '', phone: p.phone ?? '', email: p.email ?? '',
       occupation: p.occupation ?? '', companyName: p.companyName ?? '', jobTitle: p.jobTitle ?? '', workYears: intInput(p.workYears), workMonths: intInput(p.workMonths), monthlyIncome: moneyInput(f.monthlyIncome), jointIncome: f.jointIncome ?? false, partnerIncome: moneyInput(f.partnerIncome),
+      vehicleDebt: moneyInput(f.vehicleDebt), cardDebt: moneyInput(f.cardDebt), otherDebt: moneyInput(f.otherDebt),
     },
     validate,
   )
@@ -158,7 +159,10 @@ function ProfileForm({ snap }) {
       await api.profile.update({
         fullName: x.fullName.trim(), nik: x.nik, birthPlace: x.birthPlace.trim(), birthDate: x.birthDate, gender: x.gender, maritalStatus: x.maritalStatus, address: x.address.trim(), phone: x.phone.replace(/[\s-]/g, ''), email: x.email.trim(),
         occupation: x.occupation, companyName: x.companyName.trim(), jobTitle: x.jobTitle.trim(), workYears: Number(x.workYears), workMonths: Number(x.workMonths),
-        finance: { monthlyIncome: toMoney(x.monthlyIncome), jointIncome: x.jointIncome, partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null },
+        finance: {
+          monthlyIncome: toMoney(x.monthlyIncome), jointIncome: x.jointIncome, partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
+          vehicleDebt: toMoney(x.vehicleDebt), cardDebt: toMoney(x.cardDebt), otherDebt: toMoney(x.otherDebt),
+        },
       })
       form.markClean()
       toast('Profil tersimpan.')
@@ -206,6 +210,9 @@ function ProfileForm({ snap }) {
             <MoneyField label="Penghasilan bulanan" span {...form.bind('monthlyIncome')} />
             <CheckboxField label="Gabungkan pendapatan pasangan" span checked={v.jointIncome} onChange={(x) => form.setValues({ ...v, jointIncome: x, partnerIncome: x ? v.partnerIncome : '' })} />
             {v.jointIncome && <MoneyField label="Penghasilan pasangan" span {...form.bind('partnerIncome')} />}
+            <MoneyField label="Cicilan kendaraan" optional placeholder="0" {...form.bind('vehicleDebt')} />
+            <MoneyField label="Kartu kredit / paylater" optional placeholder="0" {...form.bind('cardDebt')} />
+            <MoneyField label="Pinjaman lain" optional placeholder="0" span hint="Dipakai untuk rasio cicilan di KPR Health." {...form.bind('otherDebt')} />
           </FormGrid>
         </Panel>
         {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
