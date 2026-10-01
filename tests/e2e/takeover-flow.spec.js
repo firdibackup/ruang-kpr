@@ -113,6 +113,11 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await page.getByRole('button', { name: 'Bandingkan Program' }).click()
   await expect(page.getByText('Sesuai tujuan kamu')).toBeVisible()
   await expect(page.getByText('Data perlu dicek ulang')).toBeVisible() // stale product flagged, not recommended
+
+  // Home resumes the draft in the same 3-phase language as the wizard.
+  await page.goto('/')
+  await expect(page.getByText('Take Over · Bagian 3 dari 3')).toBeVisible()
+  await expect(page.getByText('Pilih Bank & Kirim')).toBeVisible()
 })
 
 test('top-up branch shows gross/net funds and LTV', async ({ page }) => {

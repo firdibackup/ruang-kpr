@@ -41,10 +41,9 @@ import {
 } from "@/components/shared/ui";
 import { RejectedActions } from "@/domains/applications/RejectedActions";
 import {
-  primaryProgress,
+  draftProgress,
   productName,
   resumePath,
-  stepsOf,
   trackerSteps,
 } from "@/domains/applications/meta";
 import { deriveMortgage } from "@/domains/mortgages/derive";
@@ -416,10 +415,8 @@ function HeroProgress({ value, label, className }) {
 function DraftHero({ app, onDeleted }) {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
-  const steps = stepsOf(app);
-  const step = Math.min(app.currentStep, steps.length);
-  // Primary drafts read in 3 phases with their own percent table; Take Over keeps step N of 7.
-  const phase = app.productType === "primary" ? primaryProgress(step) : null;
+  // Same phase, label and percent the wizard shows (Primary and Take Over).
+  const progress = draftProgress(app);
   return (
     <HeroCard className="gap-[18px]">
       <Chip tone="glass" icon={FilePenLineIcon}>
@@ -430,21 +427,16 @@ function DraftHero({ app, onDeleted }) {
           Lanjutkan pengajuan kamu
         </h2>
         <p className="text-[15px] text-white/80">
-          {productName(app)} ·{" "}
-          {phase
-            ? `Bagian ${phase.phase} dari 3`
-            : `Step ${step} dari ${steps.length}`}
+          {productName(app)} · Bagian {progress.phase} dari 3
         </p>
-        <p className="text-[15px] font-bold">
-          {phase ? phase.label : steps[step - 1]}
-        </p>
+        <p className="text-[15px] font-bold">{progress.label}</p>
         <p className="flex items-center gap-1.5 text-[13px] text-white/80">
           <CloudCheckIcon className="size-4" aria-hidden />
           Terakhir disimpan {dateShort(app.updatedAt)}
         </p>
       </div>
       <HeroProgress
-        value={phase ? phase.percent : stepPercent(step, steps.length)}
+        value={progress.percent}
         label="Progres pengajuan"
         className="max-w-[620px]"
       />
