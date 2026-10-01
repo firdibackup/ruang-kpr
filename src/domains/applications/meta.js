@@ -11,12 +11,38 @@ export const PRIMARY_PHASES = [
 ]
 export const PRIMARY_PERCENT = [10, 30, 45, 60, 75, 85, 95]
 
-// `position` is the 1-based fractional bar position (screen 2 → 1.5) used by WizardProgress.
-export function primaryProgress(screen) {
-  const i = PRIMARY_PHASES.findIndex((p) => p.screens.includes(screen))
-  const { label, screens } = PRIMARY_PHASES[i]
-  return { phase: i + 1, label, position: i + 1 + screens.indexOf(screen) / screens.length, percent: PRIMARY_PERCENT[screen - 1] }
+// `screen` is the 1-based progress screen; `position` the fractional bar position (2nd of 2 screens → 1.5)
+// that WizardProgress takes as `reached`.
+function phaseProgress(phases, percents, screen) {
+  const i = phases.findIndex((p) => p.screens.includes(screen))
+  const { label, screens } = phases[i]
+  return { phase: i + 1, label, position: i + 1 + screens.indexOf(screen) / screens.length, percent: percents[screen - 1] }
 }
+export const primaryProgress = (screen) => phaseProgress(PRIMARY_PHASES, PRIMARY_PERCENT, screen)
+
+// Take Over has 9 progress screens: 1 Data pribadi, 2 Pekerjaan, 3 KPR lama, 4 Kemampuan bayar, 5 Properti,
+// 6 Tujuan, 7 Baseline & program, 8 Dokumen, 9 Review. Phase ends land on the same 45% / 75% as Primary.
+export const TAKEOVER_PHASES = [
+  { label: 'Kamu & KPR Lama', screens: [1, 2, 3] },
+  { label: 'Kondisi & Tujuan', screens: [4, 5, 6] },
+  { label: 'Pilih Bank & Kirim', screens: [7, 8, 9] },
+]
+export const TAKEOVER_PERCENT = [10, 20, 30, 45, 55, 65, 75, 85, 95]
+export const takeoverProgress = (screen) => phaseProgress(TAKEOVER_PHASES, TAKEOVER_PERCENT, screen)
+
+// Furthest saved Take Over screen. currentStep 6 is the compare phase until a program is picked.
+export function takeoverScreenOf(app) {
+  const s = app.currentStep
+  if (s <= 1) return 1
+  if (s === 2) return 3
+  if (s <= 5) return s + 1
+  if (s === 6) return app.selection ? 8 : 7
+  return 9
+}
+
+// Home "Lanjutkan pengajuan" card: the same phase, label and percent the wizard shows.
+export const draftProgress = (app) =>
+  app.productType === 'primary' ? primaryProgress(Math.min(app.currentStep, PRIMARY_STEPS.length)) : takeoverProgress(takeoverScreenOf(app))
 
 export const productName = (app) => (app.productType === 'primary' ? 'KPR Primary' : app.optimizationMode === 'topup' ? 'Take Over + Top-up' : 'Take Over')
 export const stepsOf = (app) => (app.productType === 'primary' ? PRIMARY_STEPS : TAKEOVER_STEPS)
