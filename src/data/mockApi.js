@@ -1,7 +1,7 @@
 // Mock implementation of the API contract (doc 04). Async like a real backend, persists through mockDb,
 // throws ApiError for expected failures. Financial math comes from src/calculations — never inline here.
 import { addMonths, countDueDatesBetween, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
-import { CalculationError, calculateOutstanding, solveAnnualRateBps } from '@/calculations/finance'
+import { CalculationError, calculateMaxPrincipal, calculateOutstanding, solveAnnualRateBps } from '@/calculations/finance'
 import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
 import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
 import { ApiError } from './apiError'
@@ -139,6 +139,22 @@ function prefilledEmployment(db) {
 }
 
 // Reusable profile data is kept on the profile; applications keep their own snapshot on submit.
+// The setup asks cicilan, bunga and sisa tenor, never sisa pokok. The estimate lives here, the one place every
+// writer goes through, and is redone only when one of its inputs changed, so older estimates stay stable.
+// An official figure (outstandingEstimated === false) wins until the user clears it.
+const OUTSTANDING_INPUTS = ['currentPayment', 'currentRateBps', 'remainingTenorMonths']
+function applyMortgageRules(m, before) {
+  if (m.currentRateType !== 'fixed') {
+    m.fixedUntil = null
+    m.estimatedFloatingRateBps = null
+  }
+  if (m.outstandingEstimated === false && m.outstandingPrincipal > 0) return
+  if (!OUTSTANDING_INPUTS.some((k) => before[k] !== m[k]) && m.outstandingPrincipal != null) return
+  const ready = m.currentPayment > 0 && m.currentRateBps > 0 && m.remainingTenorMonths > 0 && m.scheme !== 'sharia'
+  m.outstandingPrincipal = ready ? calculateMaxPrincipal({ payment: m.currentPayment, annualRateBps: m.currentRateBps, termMonths: m.remainingTenorMonths }) : null
+  m.outstandingEstimated = ready ? true : null
+}
+
 function syncProfile(db, values) {
   const { personal, employment } = values
   if (personal) db.profile = { ...db.profile, ...personal }
@@ -431,7 +447,11 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       update: call('profile.update', (db, values) => {
         const { finance, ...profile } = values
         db.profile = { ...db.profile, ...profile }
-        if (finance) db.finance = { ...db.finance, ...finance }
+        if (finance) {
+          db.finance = { ...db.finance, ...finance }
+          // One source: KPR Health reads the mortgage copy, so keep it in step with the profile.
+          for (const m of db.mortgages) if (m.status === 'draft' || m.status === 'active') m.finance = { ...m.finance, ...finance }
+        }
         return { ...db.profile, finance: db.finance }
       }),
     },
@@ -630,15 +650,13 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       saveSetupStep: call('mortgages.saveSetupStep', (db, id, { step, values }) => {
         const m = findMortgage(db, id)
         if (m.status !== 'draft' && m.status !== 'active') fail('INVALID_STATE_TRANSITION', 'Data KPR ini tidak bisa diubah.', 400)
-        const next = { ...m, ...values }
-        if (next.paymentEverChanged === true && !(next.outstandingPrincipal > 0)) {
-          fail('OFFICIAL_OUTSTANDING_REQUIRED', 'Cicilan pernah berubah. Masukkan sisa pokok resmi dari bank.', 422)
-        }
         if (values.reminders && (!values.reminders.payment.length || !(values.reminders.channels.inApp || values.reminders.channels.email))) {
           fail('VALIDATION_FAILED', 'Pilih minimal satu jadwal pembayaran dan satu kanal.', 400)
         }
+        const before = { ...m }
         Object.assign(m, values)
-        if (m.status === 'draft') m.setupStep = Math.min(6, Math.max(m.setupStep, step + 1))
+        applyMortgageRules(m, before)
+        if (m.status === 'draft') m.setupStep = Math.min(3, Math.max(m.setupStep, step + 1))
         if (values.finance) db.finance = { ...db.finance, ...values.finance }
         touch(db, m)
         return m
@@ -660,12 +678,13 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         const m = findMortgage(db, id)
         if (m.status !== 'draft') fail('INVALID_STATE_TRANSITION', 'Pemantauan sudah aktif.', 400)
         if (!confirmDataCorrect) fail('VALIDATION_FAILED', 'Centang konfirmasi data dulu.', 400)
-        const missing = ['bankName', 'originalPrincipal', 'currentPayment', 'originalTenorMonths', 'startDate', 'dueDay', 'outstandingPrincipal', 'remainingTenorMonths', 'currentRateBps', 'currentRateType'].filter((k) => m[k] == null || m[k] === '')
+        // Reminder-only setup: everything else is optional and filled in later from My KPR.
+        const missing = ['bankName', 'currentPayment', 'dueDay'].filter((k) => m[k] == null || m[k] === '')
         if (m.currentRateType === 'fixed' && !m.fixedUntil) missing.push('fixedUntil')
-        if (!(m.finance?.monthlyIncome > 0)) missing.push('finance.monthlyIncome')
+        if (!m.reminders?.payment?.length || !(m.reminders.channels.inApp || m.reminders.channels.email)) missing.push('reminders')
         if (missing.length) fail('VALIDATION_FAILED', 'Data KPR belum lengkap.', 400, { details: { missing } })
         m.status = 'active'
-        m.setupStep = 6
+        m.setupStep = 3
         m.activatedAt = nowIso(db)
         touch(db, m)
         const due = nextDueDate({ today: db.clock, dueDay: m.dueDay })
@@ -685,6 +704,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       update: call('mortgages.update', (db, id, values) => {
         const m = findMortgage(db, id)
         if (m.status !== 'active') fail('INVALID_STATE_TRANSITION', 'Hanya KPR aktif yang bisa diubah di sini.', 400)
+        const before = { ...m }
         if (values.property) m.property = { ...m.property, ...values.property }
         if (values.finance) {
           m.finance = { ...m.finance, ...values.finance }
@@ -693,6 +713,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (values.reminders) m.reminders = values.reminders
         const { property: _p, finance: _f, reminders: _r, ...core } = values
         Object.assign(m, core)
+        applyMortgageRules(m, before)
         touch(db, m)
         if (!values.reminders || Object.keys(values).length > 1) {
           pushActivity(db, { type: 'mortgage_data_updated', category: 'mortgage', title: 'Data KPR diperbarui', body: 'Proyeksi pembayaran dan KPR Health dihitung ulang.' })

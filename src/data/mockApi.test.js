@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { calculateMaxPrincipal } from '@/calculations/finance'
 import { selectHomeState } from '@/domains/home/selectHomeState'
 import { createMockApi, mockControls } from './mockApi'
-import { SCENARIOS, createSeed } from './seed'
+import { DEFAULT_REMINDERS, SCENARIOS, createSeed } from './seed'
 
 const api = createMockApi({ latencyMs: 0 })
 const file = (name, size = 200_000, type = 'image/jpeg') => ({ name, size, type })
@@ -94,27 +95,71 @@ describe('primary application', () => {
 })
 
 describe('monitoring', () => {
-  it('changed payment requires official outstanding; activation creates no application', async () => {
+  const step1 = { bankName: 'Bank ABC', currentPayment: 4_127_324, dueDay: 22 }
+  const fixedRate = { currentRateType: 'fixed', fixedUntil: '2026-12-22', currentRateBps: 550, remainingTenorMonths: 183, estimatedFloatingRateBps: 900 }
+
+  it('reminder-only setup: 5 fields activate; sisa pinjaman is derived, never asked', async () => {
     mockControls.reset('fresh')
     const m = await api.mortgages.createSetup()
-    await expectCode(api.mortgages.saveSetupStep(m.id, { step: 2, values: { paymentEverChanged: true, outstandingPrincipal: null } }), 'OFFICIAL_OUTSTANDING_REQUIRED')
-    await expectCode(api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: true }), 'OFFICIAL_OUTSTANDING_REQUIRED')
-    const est = await api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: false })
-    expect(est).toMatchObject({ effectiveRateBps: 550, paidMonths: 57, remainingMonths: 183, estimated: true })
-    expect(Math.abs(est.outstanding - 510_515_794)).toBeLessThan(5)
-    await api.mortgages.saveSetupStep(m.id, {
-      step: 5,
-      values: {
-        bankName: 'Bank ABC', originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22,
-        outstandingPrincipal: est.outstanding, remainingTenorMonths: 183, paymentEverChanged: false, currentRateBps: 550, currentRateType: 'fixed', fixedUntil: '2026-12-22', estimatedFloatingRateBps: 900,
-        finance: { monthlyIncome: 15_000_000, vehicleDebt: 0, cardDebt: 0, otherDebt: 0 },
-      },
-    })
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: step1 })
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: fixedRate })
+    expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 550, termMonths: 183 }))
+    expect(saved.outstandingEstimated).toBe(true)
+    expect(saved.setupStep).toBe(3)
+    await api.mortgages.saveSetupStep(m.id, { step: 3, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
     const r = await api.mortgages.activate(m.id, { confirmDataCorrect: true })
     expect(r.applicationCreated).toBe(false)
     const snap = await api.dashboard.getSnapshot()
     expect(snap.applications).toHaveLength(0)
     expect(selectHomeState(snap, snap.clock).state).toBe('mortgage_active_warning')
+  })
+
+  it('official sisa pinjaman wins until cleared; floating clears the fixed-only fields', async () => {
+    mockControls.reset('fresh')
+    const m = await api.mortgages.createSetup()
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: step1 })
+    await api.mortgages.saveSetupStep(m.id, { step: 2, values: fixedRate })
+    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { outstandingPrincipal: 500_000_000, outstandingEstimated: false } })
+    let saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateBps: 600 } })
+    expect(saved).toMatchObject({ outstandingPrincipal: 500_000_000, outstandingEstimated: false })
+    saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { outstandingPrincipal: null, outstandingEstimated: null } })
+    expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 600, termMonths: 183 }))
+    expect(saved.outstandingEstimated).toBe(true)
+    saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateType: 'floating' } })
+    expect(saved).toMatchObject({ fixedUntil: null, estimatedFloatingRateBps: null })
+  })
+
+  it('"Belum tahu" activates with payment reminders; fixed without an end date does not', async () => {
+    mockControls.reset('fresh')
+    const m = await api.mortgages.createSetup()
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: step1 })
+    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateType: 'fixed', fixedUntil: null } })
+    await api.mortgages.saveSetupStep(m.id, { step: 3, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
+    await expectCode(api.mortgages.activate(m.id, { confirmDataCorrect: true }), 'VALIDATION_FAILED')
+    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { currentRateType: null } })
+    await expect(api.mortgages.activate(m.id, { confirmDataCorrect: true })).resolves.toMatchObject({ applicationCreated: false })
+  })
+
+  it('saving unrelated fields keeps an existing sisa pinjaman stable', async () => {
+    mockControls.reset('mortgage_active_normal')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { bankName: m.bankName, currentPayment: m.currentPayment, dueDay: m.dueDay } })
+    expect(saved.outstandingPrincipal).toBe(m.outstandingPrincipal)
+  })
+
+  it('estimate API still refuses a changed payment (the Take Over wizard uses it)', async () => {
+    mockControls.reset('fresh')
+    await expectCode(api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: true }), 'OFFICIAL_OUTSTANDING_REQUIRED')
+    const est = await api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: false })
+    expect(est).toMatchObject({ effectiveRateBps: 550, paidMonths: 57, remainingMonths: 183, estimated: true })
+    expect(Math.abs(est.outstanding - 510_515_794)).toBeLessThan(5)
+  })
+
+  it('profile finance edits reach the active mortgage (KPR Health reads that copy)', async () => {
+    mockControls.reset('mortgage_active_normal')
+    await api.profile.update({ finance: { monthlyIncome: 20_000_000, vehicleDebt: 1_000_000 } })
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    expect(m.finance).toMatchObject({ monthlyIncome: 20_000_000, vehicleDebt: 1_000_000 })
   })
 
   it('manual payment is user-recorded and never bank-confirmed; duplicates rejected', async () => {
