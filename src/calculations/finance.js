@@ -243,6 +243,15 @@ export function calculatePaymentCapacity({ monthlyIncome, existingDebt = 0, rati
   return { safePayment, existingDebt, remainingCapacity: safePayment - existingDebt, ratioBps, estimated: true }
 }
 
+// Inverse annuity: the largest principal whose payment stays within `payment`. Floored, so its payment never exceeds it.
+export function calculateMaxPrincipal({ payment, annualRateBps, termMonths }) {
+  assertNumber(payment, 'payment')
+  assertInteger(annualRateBps, 'annualRateBps')
+  assertInteger(termMonths, 'termMonths', { min: 1 })
+  if (payment <= 0) return 0
+  return Math.floor(payment / rawAnnuity(1, monthlyRateOf(annualRateBps), termMonths))
+}
+
 export function calculatePropertyMetrics({ propertyValue, outstanding }) {
   assertMoney(propertyValue, 'propertyValue')
   assertMoney(outstanding, 'outstanding')

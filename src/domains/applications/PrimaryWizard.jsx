@@ -14,9 +14,10 @@ import { WizardProgress } from '@/components/shared/progress'
 import { UploadRow } from '@/components/shared/UploadRow'
 import { Chip, Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, ProgressBar, Spinner, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
-import { PRIMARY_STEPS, productName, resumePath } from './meta'
+import { PRIMARY_PHASES, PRIMARY_STEPS, primaryProgress, productName, resumePath } from './meta'
 import { PrimaryDetailsStep } from './PrimaryDetailsStep'
 import { PrimaryCompareStep, PrimaryProgramDetail } from './PrimaryCompare'
+import { PrimaryMilestone } from './PrimaryMilestone'
 
 const HEADERS = {
   1: ['Data diri', 'KPR Primary · isi sesuai KTP'],
@@ -28,6 +29,7 @@ const HEADERS = {
   7: ['Review & submit', 'Periksa lagi sebelum dikirim ke bank.'],
 }
 const LAST = PRIMARY_STEPS.length
+const PHASE_LABELS = PRIMARY_PHASES.map((p) => p.label)
 
 export function PrimaryWizard() {
   const { step, productId } = useParams()
@@ -51,15 +53,20 @@ export function PrimaryWizard() {
 
   const setApp = (next) => setData((s) => ({ ...s, applications: s.applications.map((a) => (a.id === next.id ? next : a)) }))
   const fromReview = location.state?.from === 'review'
+  // Set only right after saving screen 2 / 4; shown on the next phase's first screen (3 / 5).
+  const milestone = !productId && location.state?.milestone
   const go = (to, opts) => navigate(to, opts)
-  const [title, subtitle] = HEADERS[n]
+  const [title, subtitle] = milestone ? [`Tahap ${milestone} selesai`, 'KPR Primary · hasil dari data kamu'] : HEADERS[n]
   const back = fromReview ? `/apply/primary/${LAST}` : n === 1 ? '/' : `/apply/primary/${n - 1}`
+  const shown = primaryProgress(n)
+  const furthest = primaryProgress(Math.max(n, Math.min(primary?.currentStep ?? 1, LAST)))
 
   return (
     <>
       <PageHeader title={productId ? 'Detail program' : title} subtitle={productId ? 'Simulasi cicilan' : subtitle} back={productId ? '/apply/primary/6' : back} />
-      <WizardProgress label={`Step ${n} dari ${LAST} · ${PRIMARY_STEPS[n - 1]}`} steps={PRIMARY_STEPS} current={n} reached={primary?.currentStep} />
-      {n <= 4 && (
+      <WizardProgress label={`Bagian ${shown.phase} dari 3 · ${shown.label}`} steps={PHASE_LABELS} current={shown.phase} reached={furthest.position} percent={furthest.percent} />
+      {milestone && <PrimaryMilestone milestone={milestone} app={primary} go={go} />}
+      {!milestone && n <= 4 && (
         <PrimaryDetailsStep
           key={n}
           step={n}
@@ -71,7 +78,7 @@ export function PrimaryWizard() {
           go={go}
         />
       )}
-      {n === 5 && <DocumentsStep app={primary} onChange={setApp} fromReview={fromReview} go={go} />}
+      {!milestone && n === 5 && <DocumentsStep app={primary} onChange={setApp} fromReview={fromReview} go={go} />}
       {n === 6 && !productId && <PrimaryCompareStep app={primary} go={go} fromReview={fromReview} />}
       {n === 6 && productId && <PrimaryProgramDetail app={primary} productId={productId} onSaved={setApp} go={go} />}
       {n === 7 && <ReviewStep app={primary} go={go} />}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BANK_PRODUCTS } from '@/data/catalog'
-import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isStale, takeoverBaseline } from './programs'
+import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isStale, primaryAffordability, takeoverBaseline } from './programs'
 
 const asOf = '2026-09-28'
 const primaryInput = {
@@ -40,6 +40,34 @@ describe('primary compare', () => {
     const abc = r.items.find((x) => x.bank.name === 'Bank ABC')
     expect(abc.stale).toBe(true)
     expect(abc.recommended).toBe(false)
+  })
+})
+
+describe('primary affordability (milestone 1)', () => {
+  const afford = (input) => primaryAffordability({ products: BANK_PRODUCTS, input: { ...primaryInput, ...input }, asOf })
+  it('sample profile opens every primary program and picks the largest loan', () => {
+    const r = afford({})
+    expect(r.capacity.remainingCapacity).toBe(3_750_000)
+    expect(r.openCount).toBe(3)
+    expect(r.best).toMatchObject({ principal: 660_456_611, tenorMonths: 360, fixedRateBps: 550, maxLtvBps: 9000 })
+    expect(r.best.priceMax).toBe(733_840_678)
+  })
+  it('age caps the tenor at the maturity limit', () => {
+    const r = afford({ birthDate: '1976-04-12' }) // 50 → 10–15 years left
+    expect(r.openCount).toBe(3)
+    expect(r.best.tenorMonths).toBe(180)
+    expect(r.best.principal).toBeLessThan(afford({}).best.principal)
+  })
+  it('other debts over the 35% limit leave no loan room', () => {
+    const r = afford({ existingDebt: 6_000_000 })
+    expect(r.capacity.remainingCapacity).toBeLessThan(0)
+    expect(r.openCount).toBe(3)
+    expect(r.best).toBeNull()
+  })
+  it('income below every minimum opens nothing', () => {
+    const r = afford({ monthlyIncome: 3_000_000, existingDebt: 0 })
+    expect(r.openCount).toBe(0)
+    expect(r.best).toBeNull()
   })
 })
 

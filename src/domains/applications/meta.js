@@ -3,6 +3,21 @@ import { dayMonth } from '@/lib/format'
 export const PRIMARY_STEPS = ['Data Diri', 'Pekerjaan & Penghasilan', 'Properti', 'Pinjaman', 'Upload Dokumen', 'Bandingkan Program Bank', 'Review & Submit']
 export const TAKEOVER_STEPS = ['Profil & pekerjaan', 'KPR lama', 'Kemampuan bayar', 'Properti', 'Tujuan', 'Dokumen', 'Review']
 
+// The 7 Primary screens grouped into 3 phases. The percent runs fast early so the form feels far along.
+export const PRIMARY_PHASES = [
+  { label: 'Tentang Kamu', screens: [1, 2] },
+  { label: 'Rumah & Pinjaman', screens: [3, 4] },
+  { label: 'Pilih Bank & Kirim', screens: [5, 6, 7] },
+]
+export const PRIMARY_PERCENT = [10, 30, 45, 60, 75, 85, 95]
+
+// `position` is the 1-based fractional bar position (screen 2 → 1.5) used by WizardProgress.
+export function primaryProgress(screen) {
+  const i = PRIMARY_PHASES.findIndex((p) => p.screens.includes(screen))
+  const { label, screens } = PRIMARY_PHASES[i]
+  return { phase: i + 1, label, position: i + 1 + screens.indexOf(screen) / screens.length, percent: PRIMARY_PERCENT[screen - 1] }
+}
+
 export const productName = (app) => (app.productType === 'primary' ? 'KPR Primary' : app.optimizationMode === 'topup' ? 'Take Over + Top-up' : 'Take Over')
 export const stepsOf = (app) => (app.productType === 'primary' ? PRIMARY_STEPS : TAKEOVER_STEPS)
 

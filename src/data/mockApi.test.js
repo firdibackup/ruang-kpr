@@ -39,6 +39,7 @@ describe('primary application', () => {
         loan: { downPayment: 100_000_000, amount: 400_000_000, tenorMonths: 240 },
       },
     })
+    expect(await api.bankProducts.affordability({ applicationId: app.id })).toMatchObject({ openCount: 3, capacity: { remainingCapacity: 3_750_000 } })
     await expectCode(api.applications.submit(app.id, { consents: { dataAccuracy: true, sendToBank: true } }), 'DOCUMENTS_INCOMPLETE')
     for (const t of ['ktp', 'npwp', 'income_proof', 'property_document']) await api.applications.uploadDocument(app.id, { documentType: t, file: file(`${t}.jpg`) })
     await expectCode(api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.exe') }), 'FILE_TYPE_UNSUPPORTED')

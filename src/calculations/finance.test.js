@@ -4,6 +4,7 @@ import {
   calculateAnnuityPayment,
   calculateDti,
   calculateFloatingImpact,
+  calculateMaxPrincipal,
   calculateOutstanding,
   calculatePaymentCapacity,
   calculatePropertyMetrics,
@@ -203,6 +204,17 @@ describe('dti / capacity / property', () => {
   })
   it('capacity uses configurable ratio', () => {
     expect(calculatePaymentCapacity({ monthlyIncome: 15_000_000, existingDebt: 1_500_000 })).toMatchObject({ safePayment: 5_250_000, remainingCapacity: 3_750_000 })
+  })
+  it('max principal round-trips with the annuity payment; no capacity gives 0', () => {
+    for (const [payment, annualRateBps, termMonths] of [[3_750_000, 550, 360], [2_000_000, 725, 120], [1_000_000, 0, 60]]) {
+      const principal = calculateMaxPrincipal({ payment, annualRateBps, termMonths })
+      const back = calculateAnnuityPayment({ principal, annualRateBps, termMonths }).payment
+      expect(back).toBeLessThanOrEqual(payment)
+      expect(payment - back).toBeLessThanOrEqual(1)
+    }
+    expect(calculateMaxPrincipal({ payment: 3_750_000, annualRateBps: 550, termMonths: 360 })).toBe(660_456_611)
+    expect(calculateMaxPrincipal({ payment: 0, annualRateBps: 550, termMonths: 360 })).toBe(0)
+    expect(calculateMaxPrincipal({ payment: -250_000, annualRateBps: 550, termMonths: 360 })).toBe(0)
   })
   it('F06 property metrics, P02 negative equity, P03 zero value', () => {
     const r = calculatePropertyMetrics({ propertyValue: 850_000_000, outstanding: 415_000_000 })

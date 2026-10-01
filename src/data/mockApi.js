@@ -2,7 +2,7 @@
 // throws ApiError for expected failures. Financial math comes from src/calculations — never inline here.
 import { addMonths, countDueDatesBetween, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
 import { CalculationError, calculateOutstanding, solveAnnualRateBps } from '@/calculations/finance'
-import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, simulateLoan, takeoverBaseline } from '@/calculations/programs'
+import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
 import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
 import { ApiError } from './apiError'
 import { ARTICLES } from './articles'
@@ -91,21 +91,24 @@ const touch = (db, entity) => {
   entity.updatedAt = nowIso(db)
 }
 
-function primaryInput(app) {
-  const { employment: e = {}, property: p = {}, loan: l = {}, personal = {} } = app.data
-  if (!(e.monthlyIncome > 0) || !(p.price > 0) || !(l.amount > 0) || !(l.tenorMonths > 0)) {
-    fail('CALCULATION_INPUT_INCOMPLETE', 'Lengkapi data pinjaman dan penghasilan dulu.', 400)
-  }
+// Profile part of the Primary input (steps 1–2): enough for the affordability milestone.
+function profileInput(app) {
+  const { employment: e = {}, personal = {} } = app.data
+  if (!(e.monthlyIncome > 0)) fail('CALCULATION_INPUT_INCOMPLETE', 'Penghasilan bulanan belum diisi.', 400)
   return {
-    loanAmount: l.amount,
-    tenorMonths: l.tenorMonths,
-    propertyPrice: p.price,
-    propertyType: p.propertyType,
     occupation: e.occupation,
     birthDate: personal.birthDate,
     monthlyIncome: e.monthlyIncome + (e.jointIncome ? e.partnerIncome ?? 0 : 0),
     existingDebt: (e.vehicleDebt ?? 0) + (e.cardDebt ?? 0) + (e.otherDebt ?? 0),
   }
+}
+
+function primaryInput(app) {
+  const { employment: e = {}, property: p = {}, loan: l = {} } = app.data
+  if (!(e.monthlyIncome > 0) || !(p.price > 0) || !(l.amount > 0) || !(l.tenorMonths > 0)) {
+    fail('CALCULATION_INPUT_INCOMPLETE', 'Lengkapi data pinjaman dan penghasilan dulu.', 400)
+  }
+  return { loanAmount: l.amount, tenorMonths: l.tenorMonths, propertyPrice: p.price, propertyType: p.propertyType, ...profileInput(app) }
 }
 
 function selectionFrom(product, fields) {
@@ -610,6 +613,9 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         const result = comparePrimaryPrograms({ products: productsOf(db), input: primaryInput(app), asOf: db.clock, sort })
         return { ...result, previouslyRejectedProductIds: app.excludedProductIds ?? [] }
       }),
+      affordability: call('bankProducts.affordability', (db, { applicationId }) =>
+        primaryAffordability({ products: productsOf(db), input: profileInput(findApp(db, applicationId)), asOf: db.clock }),
+      ),
     },
 
     mortgages: {
