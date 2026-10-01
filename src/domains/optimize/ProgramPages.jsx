@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Slider } from '@/domains/applications/PrimaryCompare'
 import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
+import { takeoverScreenOf } from '@/domains/applications/meta'
 import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/MonitoringDashboard'
 import { applicationHealth, simulationTeaser } from './insights'
 import { OptimizeHeader, modeName, useOptimize } from './shared'
@@ -34,7 +35,8 @@ function useSimulation(sort) {
     const app = activeApplication(snap.applications)
     const draft = app?.productType === 'takeover' && app.status === 'draft' && app.currentStep >= 6 ? app : null
     if (draft && snap.simulation?.source?.id !== draft.id) await api.simulations.run({ source: { type: 'application', id: draft.id }, input: draft.data.goal })
-    return api.simulations.getCurrent({ sort })
+    // `draft` rides along so the progress keeps the furthest saved screen (Dokumen/Review) when revisiting programs.
+    return { ...(await api.simulations.getCurrent({ sort })), draft }
   }, [sort])
 }
 
@@ -64,7 +66,7 @@ function NoSimulation({ error, onRetry }) {
 
 function Header({ sim, title, subtitle, back }) {
   const fromApp = sim?.source.type === 'application'
-  return <OptimizeHeader screen={fromApp ? 7 : null} title={title} subtitle={subtitle} back={back} />
+  return <OptimizeHeader screen={fromApp ? 7 : null} reached={sim?.draft ? takeoverScreenOf(sim.draft) : 7} title={title} subtitle={subtitle} back={back} />
 }
 
 // Phase 2 milestone (application flow only): the now-complete KPR Health score + one teaser from the simulation.

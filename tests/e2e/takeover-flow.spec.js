@@ -35,6 +35,10 @@ test('take over from Explore: simulation creates no application; apply → docs 
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
   await expect(page).toHaveURL(/optimize\/7/)
+  // Revisiting the program list from Review keeps the furthest saved percent.
+  await page.goto('/optimize/programs')
+  await expect(page.getByText('95% selesai.')).toBeAttached()
+  await page.goto('/optimize/7')
   await page.getByRole('checkbox', { name: /Data yang saya berikan benar/ }).check()
   await page.getByRole('checkbox', { name: /Saya setuju data dikirim/ }).check()
   await page.getByRole('button', { name: 'Submit Pengajuan' }).click()
