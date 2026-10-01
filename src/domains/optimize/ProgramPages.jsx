@@ -11,7 +11,9 @@ import { Button } from '@/components/ui/button'
 import { Slider } from '@/domains/applications/PrimaryCompare'
 import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
-import { OptimizeHeader, modeName } from './shared'
+import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/MonitoringDashboard'
+import { applicationHealth, simulationTeaser } from './insights'
+import { OptimizeHeader, modeName, useOptimize } from './shared'
 
 const ELIG = { estimated_eligible: ['Estimasi layak', 'ok'], needs_review: ['Perlu ditinjau', 'warn'], not_eligible: ['Berisiko ditolak', 'bad'] }
 const COST_LABEL = {
@@ -65,9 +67,35 @@ function Header({ sim, title, subtitle, back }) {
   return <OptimizeHeader screen={fromApp ? 7 : null} title={title} subtitle={subtitle} back={back} />
 }
 
+// Phase 2 milestone (application flow only): the now-complete KPR Health score + one teaser from the simulation.
+function PhaseTwoBanner({ sim, app, clock }) {
+  const h = applicationHealth(app.data, clock, app.data.property?.estimatedValue ?? null)
+  const weakest = h.components.filter((x) => x.score !== null).sort((a, b) => a.score - b.score)[0]
+  // Same sentence logic as the Properti step's HealthAside.
+  const sentence = h.score >= 80 ? 'Kondisi KPR kamu sehat.' : weakest?.key === 'rate' && h.rate.mode === 'floating' ? 'Bunga kamu sudah floating.' : HEALTH_SENTENCE[weakest?.key]
+  return (
+    <section aria-labelledby="phase2-title" className="flex flex-col gap-4 rounded-card bg-card p-6 shadow-card sm:flex-row sm:items-center sm:p-7">
+      <HealthRing health={h} size={88} />
+      <div className="flex min-w-0 flex-col items-start gap-1.5">
+        <h2 id="phase2-title" className="flex items-center gap-2 text-lg font-extrabold">
+          <CircleCheckIcon className="size-5 text-success-strong" aria-hidden />
+          Tahap 2 selesai
+        </h2>
+        <Chip tone={h.tone}>
+          Kesehatan KPR: {h.label}
+          {h.partial ? ' · parsial' : ''}
+        </Chip>
+        {sentence && <p className="text-[13px] leading-5 font-semibold text-ink-2">{sentence}</p>}
+        <p className="text-sm font-bold text-primary">{simulationTeaser(sim)}</p>
+      </div>
+    </section>
+  )
+}
+
 export function BaselinePage() {
   const navigate = useNavigate()
   const { data: sim, error, reload, loading } = useSimulation()
+  const { app, snap } = useOptimize() // the draft behind an application simulation, for the phase 2 banner
   if (!sim) return loading ? <PageSkeleton /> : <NoSimulation error={error} onRetry={reload} />
   const b = sim.baseline
   const topup = sim.input.mode === 'topup'
@@ -75,6 +103,7 @@ export function BaselinePage() {
   return (
     <>
       <Header sim={sim} title="Kondisi KPR kamu" subtitle="Pembanding sebelum melihat program bank baru." back={back} />
+      {sim.source.type === 'application' && app && <PhaseTwoBanner sim={sim} app={app} clock={snap.clock} />}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="gap-5 sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">

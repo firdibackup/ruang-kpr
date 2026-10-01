@@ -3,6 +3,7 @@
 import { CalculationError, calculateDti, calculatePaymentCapacity, calculatePropertyMetrics, calculateTopupScenario } from '@/calculations/finance'
 import { takeoverBaseline } from '@/calculations/programs'
 import { healthScore, rateMode } from '@/domains/mortgages/derive'
+import { rupiahShort } from '@/lib/format'
 
 const incomeOf = (e = {}) => (e.monthlyIncome ?? 0) + (e.jointIncome ? e.partnerIncome ?? 0 : 0)
 const debtOf = (f = {}) => (f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0)
@@ -57,4 +58,16 @@ export function goalConditions({ employment, oldLoan: o = {}, finance: f = {}, p
     safePayment: capacity?.remainingCapacity ?? null,
     paymentRoom: capacity && o.currentPayment > 0 ? capacity.remainingCapacity - o.currentPayment : null,
   }
+}
+
+// Phase 2 milestone teaser on Baseline: one line from the simulation already loaded there.
+export function simulationTeaser({ items, input }) {
+  const n = items.length
+  if (!n) return 'Belum ada program yang cocok'
+  if (input.mode === 'topup') {
+    const funded = items.filter((x) => x.topup && x.topup.fundingGap <= 0).length
+    return funded ? `${n} program cocok · ${funded} memenuhi kebutuhan dana ${rupiahShort(input.requestedTopup)}` : `${n} program cocok · belum ada yang memenuhi kebutuhan dana`
+  }
+  const cut = Math.max(0, ...items.map((x) => x.monthlyDiff))
+  return cut > 0 ? `${n} program cocok · cicilan bisa turun hingga ${rupiahShort(cut)}/bln` : `${n} program cocok · belum ada yang menurunkan cicilan`
 }

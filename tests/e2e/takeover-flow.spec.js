@@ -6,6 +6,7 @@ async function openFirstProgram(page, mode) {
   await page.getByRole('button', { name: 'Lihat Kondisi KPR' }).click()
   await expect(page).toHaveURL(/optimize\/baseline/)
   await expect(page.getByText('Estimasi biaya keluar dari bank lama')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Tahap 2 selesai' })).toHaveCount(0) // Explore simulation is not an application
   await page.getByRole('button', { name: 'Bandingkan Program' }).click()
   await expect(page).toHaveURL(/optimize\/programs$/)
   await page.getByRole('button', { name: 'Lihat Detail' }).first().click()
@@ -105,6 +106,9 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await page.getByRole('button', { name: 'Lihat Kondisi KPR' }).click()
 
   await expect(page).toHaveURL(/optimize\/baseline/)
+  await expect(page.getByRole('heading', { name: 'Tahap 2 selesai' })).toBeVisible()
+  await expect(page.getByText('75% selesai.')).toBeAttached()
+  await expect(page.getByText(/\d+ program cocok/)).toBeVisible()
   await expect(page.getByText('Angka resmi dari bank')).toBeVisible()
   await page.getByRole('button', { name: 'Bandingkan Program' }).click()
   await expect(page.getByText('Sesuai tujuan kamu')).toBeVisible()

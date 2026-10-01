@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applicationHealth, goalConditions } from './insights'
+import { applicationHealth, goalConditions, simulationTeaser } from './insights'
 
 const clock = '2026-09-30'
 const data = {
@@ -59,5 +59,24 @@ describe('goalConditions', () => {
     const c = goalConditions({ ...data, oldLoan: { originalPrincipal: 500_000_000 } }, clock)
     expect(c.totalInterest).toBeNull()
     expect(c.payoffDate).toBeNull()
+  })
+})
+
+describe('simulationTeaser', () => {
+  const item = (monthlyDiff, fundingGap = null) => ({ monthlyDiff, topup: fundingGap == null ? null : { fundingGap } })
+
+  it('take over: the biggest monthly cut, or says nothing lowers the payment', () => {
+    expect(simulationTeaser({ items: [item(350_000), item(850_000), item(-100_000)], input: { mode: 'takeover' } })).toBe('3 program cocok · cicilan bisa turun hingga Rp850 rb/bln')
+    expect(simulationTeaser({ items: [item(0), item(-100_000)], input: { mode: 'takeover' } })).toBe('2 program cocok · belum ada yang menurunkan cicilan')
+  })
+
+  it('top-up: counts programs that cover the requested funds', () => {
+    const input = { mode: 'topup', requestedTopup: 100_000_000 }
+    expect(simulationTeaser({ items: [item(0, -5_000_000), item(0, 0), item(0, 20_000_000)], input })).toBe('3 program cocok · 2 memenuhi kebutuhan dana Rp100 jt')
+    expect(simulationTeaser({ items: [item(0, 20_000_000), item(0)], input })).toBe('2 program cocok · belum ada yang memenuhi kebutuhan dana')
+  })
+
+  it('says so when no program matches', () => {
+    expect(simulationTeaser({ items: [], input: { mode: 'topup', requestedTopup: 100_000_000 } })).toBe('Belum ada program yang cocok')
   })
 })
