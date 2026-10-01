@@ -8,6 +8,7 @@ import { bpsInput, intInput, moneyInput, percentBps, rupiah, toBps, toInt, toMon
 import { Button } from '@/components/ui/button'
 import { DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, RateField } from '@/components/shared/fields'
 import { Chip, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner, StatTile } from '@/components/shared/ui'
+import { takeoverScreenOf } from '@/domains/applications/meta'
 import { Aside, OptimizeHeader, modeName, useOptimize } from './shared'
 import { validateOfficial } from './validation'
 
@@ -48,7 +49,7 @@ export function OldLoanEstimatePage() {
 
   return (
     <>
-      <OptimizeHeader n={2} reached={app.currentStep} title={`Pengajuan ${modeName(app.optimizationMode)}`} subtitle="Step 2/7 · KPR lama" back="/optimize/2" />
+      <OptimizeHeader screen={3} reached={takeoverScreenOf(app)} title={`Pengajuan ${modeName(app.optimizationMode)}`} subtitle="KPR lama" back="/optimize/2" />
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {est.loading && !e ? (
           <Panel aria-busy="true" className="min-h-60 items-center justify-center">
@@ -165,7 +166,7 @@ export function OldLoanOfficialPage() {
   })
   return (
     <>
-      <OptimizeHeader n={2} reached={app.currentStep} title={`Pengajuan ${modeName(app.optimizationMode)}`} subtitle="Step 2/7 · KPR lama" back={changed ? '/optimize/2' : '/optimize/2/estimasi'} />
+      <OptimizeHeader screen={3} reached={takeoverScreenOf(app)} title={`Pengajuan ${modeName(app.optimizationMode)}`} subtitle="KPR lama" back={changed ? '/optimize/2' : '/optimize/2/estimasi'} />
       <form onSubmit={onSubmit} noValidate className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-5">
           <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />

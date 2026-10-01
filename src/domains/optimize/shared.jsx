@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { WizardProgress } from '@/components/shared/progress'
 import { SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
-import { TAKEOVER_STEPS } from '@/domains/applications/meta'
+import { TAKEOVER_PHASES, takeoverProgress } from '@/domains/applications/meta'
 
 export const modeName = (mode) => (mode === 'topup' ? 'Refinancing + Top-up' : 'Take Over')
 
@@ -17,16 +17,23 @@ export function useOptimize() {
   return { ...res, snap: res.data, app: takeover, otherApp: app && !takeover ? app : null, setApp }
 }
 
-export function OptimizeHeader({ n, reached, title, subtitle, back, comparePhase = false, saving }) {
+const PHASE_LABELS = TAKEOVER_PHASES.map((p) => p.label)
+
+// `screen` is the Take Over progress screen on display (1–9, see takeoverProgress); `reached` the furthest
+// saved one, so stepping back to edit never lowers the percent. No `screen` → no progress (intro, Explore).
+export function OptimizeHeader({ screen, reached = screen, title, subtitle, back, saving }) {
+  const shown = screen && takeoverProgress(screen)
+  const furthest = screen && takeoverProgress(Math.max(screen, reached))
   return (
     <>
       <PageHeader title={title} subtitle={subtitle} back={back} />
-      {n && (
+      {screen && (
         <WizardProgress
-          label={`Step ${n} dari 7 · ${comparePhase ? 'Bandingkan program' : TAKEOVER_STEPS[n - 1]}`}
-          steps={TAKEOVER_STEPS}
-          current={comparePhase ? 6 : n}
-          reached={reached}
+          label={`Bagian ${shown.phase} dari 3 · ${shown.label}`}
+          steps={PHASE_LABELS}
+          current={shown.phase}
+          reached={furthest.position}
+          percent={furthest.percent}
           saving={saving}
         />
       )}

@@ -62,7 +62,7 @@ function NoSimulation({ error, onRetry }) {
 
 function Header({ sim, title, subtitle, back }) {
   const fromApp = sim?.source.type === 'application'
-  return <OptimizeHeader n={fromApp ? 5 : null} comparePhase title={title} subtitle={subtitle} back={back} />
+  return <OptimizeHeader screen={fromApp ? 7 : null} title={title} subtitle={subtitle} back={back} />
 }
 
 export function BaselinePage() {

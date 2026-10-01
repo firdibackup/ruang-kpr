@@ -51,10 +51,12 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   const save = () => page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
   await expect(page).toHaveURL(/optimize\/1$/)
+  await expect(page.getByText('Bagian 1 dari 3 · Kamu & KPR Lama')).toBeVisible()
+  await expect(page.getByText('10% selesai.')).toBeAttached()
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/1\/pekerjaan/)
-  await expect(page.getByText('7% selesai.')).toBeAttached() // saved personal data moves the percent within step 1
+  await expect(page.getByText('20% selesai.')).toBeAttached() // Pekerjaan is its own progress screen
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/2$/)
@@ -70,6 +72,11 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await save()
 
   await expect(page).toHaveURL(/optimize\/3/) // Kemampuan bayar
+  // Going back to edit keeps the furthest saved percent instead of dropping it.
+  await page.goto('/optimize/1/pekerjaan')
+  await expect(page.getByText('45% selesai.')).toBeAttached()
+  await page.goto('/optimize/3')
+  await expect(page.getByText('Bagian 2 dari 3 · Kondisi & Tujuan')).toBeVisible()
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/4/) // Properti

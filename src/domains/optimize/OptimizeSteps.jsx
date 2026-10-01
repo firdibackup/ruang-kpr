@@ -83,6 +83,7 @@ import {
   toPersonal,
   validatePersonal,
 } from "@/domains/applications/validation";
+import { takeoverScreenOf } from "@/domains/applications/meta";
 import {
   HEALTH_SENTENCE,
   HealthRing,
@@ -105,6 +106,16 @@ const YES_NO_CHANGED = [
   { value: "no", label: "Tidak" },
   { value: "yes", label: "Ya" },
 ];
+// Screen names under the page title; the "Bagian X dari 3" label lives in the progress card.
+const SUBTITLES = {
+  1: "Data pribadi",
+  2: "KPR lama",
+  3: "Kemampuan bayar",
+  4: "Properti",
+  5: "Tujuan",
+  6: "Dokumen",
+  7: "Review",
+};
 
 export function OptimizeStepPage({ employment = false }) {
   const { step } = useParams();
@@ -155,17 +166,16 @@ export function OptimizeStepPage({ employment = false }) {
     6: "/optimize/programs",
     7: "/optimize/6",
   }[n];
+  // Progress screens (takeoverProgress): 1 Data pribadi, 2 Pekerjaan, step n → n + 1 up to Tujuan, then Dokumen 8, Review 9.
+  const screen = n === 1 ? (employment ? 2 : 1) : n <= 5 ? n + 1 : n + 2;
   const subtitle =
-    n === 1
-      ? `Step 1/7 · ${employment ? "Pekerjaan & penghasilan" : "Data pribadi"}`
-      : `Step ${n}/7`;
+    n === 1 && employment ? "Pekerjaan & penghasilan" : SUBTITLES[n];
 
   return (
     <>
       <OptimizeHeader
-        n={n}
-        // Personal data is already saved here (guarded above): count it as half of step 1.
-        reached={employment ? Math.max(app.currentStep, 1.5) : app.currentStep}
+        screen={screen}
+        reached={takeoverScreenOf(app)}
         title={`Pengajuan ${PN}`}
         subtitle={subtitle}
         back={fromReview ? "/optimize/7" : back}
