@@ -105,6 +105,13 @@ test('beginner path: "Belum tahu" still activates; Home and My KPR ask for what 
   await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
   await page.goto('/my-kpr/health')
   await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
+
+  // Take Over from the monitored KPR needs bunga & sisa tenor first (sisa pinjaman is derived from them).
+  await page.goto('/optimize/start?mode=takeover')
+  await expect(page.getByText('Untuk simulasi, lengkapi bunga dan sisa tenor KPR kamu dulu.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Lihat Kondisi KPR' })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Lengkapi data bunga' }).click()
+  await expect(page).toHaveURL(/monitoring\/setup\/2\?edit=explore/)
 })
 
 test('warning & partial states: H-90 warning is first, partial rate shows no fake table', async ({ page }) => {

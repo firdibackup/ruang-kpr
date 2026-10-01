@@ -20,12 +20,32 @@ export function GoalStartPage() {
   const navigate = useNavigate()
   const { snap, app, otherApp, error, reload } = useOptimize()
   const m = snap?.mortgages.find((x) => x.status === 'active')
-  const years = m ? Math.min(25, Math.max(5, Math.round(m.remainingTenorMonths / 12 / 5) * 5)) : 15
+  const years = m?.remainingTenorMonths ? Math.min(25, Math.max(5, Math.round(m.remainingTenorMonths / 12 / 5) * 5)) : 15
   const form = useForm({ mode: initialMode, goal: 'lower_payment', tenorMonths: String((initialMode === 'topup' ? Math.max(years, 20) : years) * 12), maxPayment: '', requestedTopup: moneyInput(initialMode === 'topup' ? 100_000_000 : null), purpose: initialMode === 'topup' ? 'renovation' : '', purposeOther: '' }, validateGoal)
   const [pending, setPending] = useState(false)
   const [apiError, setApiError] = useState('')
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   if (!m) return <Navigate to={`/optimize/intro?mode=${initialMode}`} replace />
+  // The reminder-only setup may not know the old loan's balance yet: ask for it before simulating.
+  const loanReady = m.currentPayment > 0 && m.currentRateBps > 0 && m.remainingTenorMonths > 0 && m.outstandingPrincipal > 0
+  if (!loanReady) {
+    return (
+      <>
+        <OptimizeHeader title={`Simulasi ${modeName(initialMode)}`} subtitle="Memakai data KPR yang kamu pantau. Tidak ada data yang dikirim ke bank." back="/explore" />
+        <Notice
+          tone="warn"
+          title="Data KPR belum cukup untuk simulasi"
+          action={
+            <Link to="/monitoring/setup/2?edit=explore" className="text-[13px] font-bold text-primary underline">
+              Lengkapi data bunga
+            </Link>
+          }
+        >
+          Untuk simulasi, lengkapi bunga dan sisa tenor KPR kamu dulu.
+        </Notice>
+      </>
+    )
+  }
   const existing = app ?? otherApp
   const v = form.values
 
