@@ -211,10 +211,13 @@ export function RateTab() {
   const { m, d, snap } = useOutletContext()
   const navigate = useNavigate()
   const fixed = d.mode !== 'floating'
+  const unknown = d.mode == null // "Belum tahu" in setup: never shown as Fixed
   const fi = d.floatingImpact
   const steps = [
     ...(m.rateHistory ?? []).filter((p) => p.endDate).map((p) => ({ label: `${p.type === 'fixed' ? 'Fixed' : 'Floating'} ${percentBps(p.rateBps)}`, sub: `${dateShort(p.startDate)} – ${dateShort(p.endDate)}`, state: 'done' })),
-    fixed
+    unknown
+      ? { label: 'Jenis bunga belum diketahui', sub: 'Saat ini', state: 'current' }
+      : fixed
       ? { label: `Fixed ${percentBps(m.currentRateBps)}`, sub: `Sekarang – ${dateShort(m.fixedUntil)}`, state: 'current' }
       : { label: `Floating ${percentBps(m.currentRateBps)}`, sub: 'Saat ini', state: 'current' },
     ...(fixed && m.fixedUntil ? [{ label: m.estimatedFloatingRateBps ? `Estimasi Floating ${percentBps(m.estimatedFloatingRateBps)}` : 'Floating (estimasi belum diisi)', sub: `Mulai ${dateShort(addDays(m.fixedUntil, 1))}`, state: 'estimate' }] : []),
@@ -225,8 +228,16 @@ export function RateTab() {
         <div className="flex flex-col gap-1">
           <span className="text-[13px] font-extrabold text-ink-3">Bunga saat ini</span>
           <span className="text-[34px] font-extrabold">
-            {percentBps(m.currentRateBps)} {fixed ? 'Fixed' : 'Floating'}
+            {unknown ? (m.currentRateBps ? percentBps(m.currentRateBps) : rateTypeLabel(null)) : `${percentBps(m.currentRateBps)} ${fixed ? 'Fixed' : 'Floating'}`}
           </span>
+          {unknown && (
+            <span className="flex flex-wrap items-center gap-x-2 text-base font-bold text-warning-text">
+              Jenis bunga belum diketahui
+              <Link to="/monitoring/setup/2?edit=rate" className="flex min-h-11 items-center text-[13px] text-primary underline">
+                Isi jenis bunga
+              </Link>
+            </span>
+          )}
         </div>
         {fixed && m.fixedUntil && (
           <>

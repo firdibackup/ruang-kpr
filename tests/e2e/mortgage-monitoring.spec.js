@@ -105,6 +105,10 @@ test('beginner path: "Belum tahu" still activates; Home and My KPR ask for what 
   await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
   await page.goto('/my-kpr/health')
   await expect(page.locator('main')).not.toContainText(/null|NaN|undefined/)
+  // An unknown rate type is never labelled Fixed; the Rate tab asks for it instead.
+  await page.goto('/my-kpr/rate')
+  await expect(page.getByRole('link', { name: 'Isi jenis bunga' })).toBeVisible()
+  await expect(page.locator('main')).not.toContainText('Fixed')
 
   // Take Over from the monitored KPR needs bunga & sisa tenor first (sisa pinjaman is derived from them).
   await page.goto('/optimize/start?mode=takeover')
