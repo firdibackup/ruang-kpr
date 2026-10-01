@@ -41,6 +41,8 @@ export function buildSchedule(m, asOf) {
 }
 
 export function rateMode(m, asOf) {
+  // "Belum tahu" in setup: no floating reminder and no made-up "normal" rate score.
+  if (!m.currentRateType) return { mode: null, daysUntilFixedEnd: null }
   if (m.currentRateType === 'floating' || (m.fixedUntil && m.fixedUntil < asOf)) return { mode: 'floating', daysUntilFixedEnd: null }
   if (!m.fixedUntil) return { mode: 'normal', daysUntilFixedEnd: null }
   const days = daysUntil({ fromDate: asOf, targetDate: m.fixedUntil })
@@ -59,9 +61,10 @@ export function healthScore({ dtiRatio, ltvRatio, mode, daysUntilFixedEnd, paidR
     { key: 'dti', name: 'Beban cicilan', score: dtiRatio == null ? null : band(dtiRatio, [[0.3, 90], [0.35, 75], [0.4, 62], [0.5, 40], [Infinity, 20]]) },
     { key: 'ltv', name: 'Nilai properti', score: ltvRatio == null ? null : band(ltvRatio, [[0.5, 90], [0.7, 75], [0.8, 60], [1, 40], [Infinity, 20]]) },
     { key: 'rate', name: 'Risiko bunga', score: mode == null ? null : mode === 'floating' ? 50 : band(daysUntilFixedEnd ?? Infinity, [[90, 58], [365, 75], [Infinity, 90]]) },
-    { key: 'progress', name: 'Progres pinjaman', score: Math.min(100, Math.round(50 + 70 * paidRatio)) },
+    { key: 'progress', name: 'Progres pinjaman', score: paidRatio == null ? null : Math.min(100, Math.round(50 + 70 * paidRatio)) },
   ]
   const known = components.filter((c) => c.score !== null)
+  if (!known.length) return { score: null, partial: true, label: 'Belum lengkap', tone: 'mute', components }
   const score = Math.round(known.reduce((s, c) => s + c.score, 0) / known.length)
   return {
     score,
@@ -84,7 +87,7 @@ export function nextUnpaidDue(m, asOf) {
 // (last month if still unpaid, up to ~1 month ahead).
 function paymentWindow(m, asOf, nextDue) {
   const paid = new Set((m.payments ?? []).filter((p) => p.status === 'paid').map((p) => p.dueDate))
-  const dueWindow = [addMonths(nextDue, -1, m.dueDay), nextDue, addMonths(nextDue, 1, m.dueDay)].filter((x) => x > m.startDate)
+  const dueWindow = [addMonths(nextDue, -1, m.dueDay), nextDue, addMonths(nextDue, 1, m.dueDay)].filter((x) => !m.startDate || x > m.startDate)
   return { dueWindow, payableDues: dueWindow.filter((x) => !paid.has(x) && x <= addDays(asOf, 31)) }
 }
 
@@ -98,7 +101,8 @@ export function deriveMortgage(m, asOf) {
   const dti = income > 0 ? calculateDti({ monthlyIncome: income, mortgagePayment: m.currentPayment, otherMonthlyDebt: otherDebt }) : null
   const value = m.property?.estimatedValue ?? null
   const property = value > 0 && m.outstandingPrincipal >= 0 ? calculatePropertyMetrics({ propertyValue: value, outstanding: m.outstandingPrincipal ?? 0 }) : null
-  const paidRatio = m.originalPrincipal > 0 ? Math.min(1, Math.max(0, (m.originalPrincipal - (m.outstandingPrincipal ?? m.originalPrincipal)) / m.originalPrincipal)) : 0
+  // Unknown (null), not 0%, until both the original principal and today's balance are known.
+  const paidRatio = m.originalPrincipal > 0 && m.outstandingPrincipal != null ? Math.min(1, Math.max(0, (m.originalPrincipal - m.outstandingPrincipal) / m.originalPrincipal)) : null
 
   let floatingImpact = null
   if (mode !== 'floating' && schedule && fixedMonths != null && fixedMonths < schedule.rows.length) {
