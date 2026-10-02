@@ -23,4 +23,19 @@ describe('derive with reminder-only data', () => {
   it('payment history still lists due dates without an akad date', () => {
     expect(deriveMortgage(minimal, today).dueWindow).toEqual(['2026-09-22', '2026-10-22', '2026-11-22'])
   })
+
+  it('the akad day is not the next installment', () => {
+    const fresh = { ...minimal, startDate: today, dueDay: 28 }
+    expect(deriveMortgage(fresh, today)).toMatchObject({ nextDue: '2026-10-28', paymentAlert: null })
+  })
+
+  it('Home nudges from H-7 (warn), turns red on the due day and for a due missed since activation', () => {
+    const tracked = { ...minimal, activatedAt: '2026-09-15T08:00:00.000Z', payments: [{ dueDate: '2026-09-22', status: 'paid' }] }
+    expect(deriveMortgage(tracked, '2026-10-14').paymentAlert).toBeNull()
+    expect(deriveMortgage(tracked, '2026-10-15').paymentAlert).toEqual({ due: '2026-10-22', days: 7, tone: 'warn' })
+    expect(deriveMortgage(tracked, '2026-10-22').paymentAlert).toEqual({ due: '2026-10-22', days: 0, tone: 'bad' })
+    expect(deriveMortgage(tracked, '2026-10-25').paymentAlert).toEqual({ due: '2026-10-22', days: -3, tone: 'bad' })
+    // A due before activation could not be recorded here, so it is not flagged as late.
+    expect(deriveMortgage({ ...tracked, activatedAt: '2026-09-28T08:00:00.000Z', payments: [] }, today).paymentAlert).toBeNull()
+  })
 })

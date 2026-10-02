@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { CheckIcon, LockIcon, PencilIcon } from 'lucide-react'
+import { PiCalculatorFill, PiEqualsFill, PiListChecksFill, PiTrendDownFill, PiTrendUpFill } from 'react-icons/pi'
 import { api } from '@/data/api'
 import { DEFAULT_REMINDERS } from '@/data/seed'
 import { calculateMaxPrincipal } from '@/calculations/finance'
@@ -10,7 +12,7 @@ import { BANKS, CERTIFICATES, CITIES, OCCUPATIONS, PROPERTY_TYPES, bpsInput, dat
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, RateField, SelectField, TextField } from '@/components/shared/fields'
-import { UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { FormDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
 import { WizardProgress } from '@/components/shared/progress'
 import { ErrorPanel, Notice, PageSkeleton, Spinner } from '@/components/shared/ui'
 import { profileFormValues, toEmployment, toPersonal, validatePersonal } from '@/domains/applications/validation'
@@ -38,14 +40,21 @@ const NO_YES = [
   { value: 'no', label: 'Tidak' },
   { value: 'yes', label: 'Ya' },
 ]
-// Step 2 is three short optional forms, like Take Over's Data pribadi → Pekerjaan screens. `required`: the only
+// Step 2 is three short forms, like Take Over's Data pribadi → Pekerjaan screens. `required`: the only
 // fields a form needs to be saved (this setup's rule; Profile and Take Over keep theirs). The rest can come later.
 const PARTS = [
   { slug: '', title: 'Data pribadi', desc: 'Sesuai KTP. Disimpan di profil kamu.', required: ['fullName'] },
   { slug: 'pekerjaan', title: 'Pekerjaan & penghasilan', desc: 'Untuk rasio cicilan di KPR Health dan pengajuan Take Over.', required: ['monthlyIncome', 'partnerIncome'] },
   { slug: 'properti', title: 'Data properti', desc: 'Untuk nilai properti, LTV, dan pengajuan Take Over atau Top-up.', required: [] },
 ]
-const partPath = (i) => `/monitoring/setup/2${PARTS[i].slug ? `/${PARTS[i].slug}` : ''}`
+// Pop-up entrance for live estimates: springs up from slightly below with a small overshoot so it catches the eye.
+// Siblings jump to their new place (no layout animation) so the card pops into open space instead of under them.
+const POP = {
+  initial: { opacity: 0, scale: 0.85, y: 16 },
+  animate: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', bounce: 0.45, duration: 0.55 } },
+  exit: { opacity: 0, scale: 0.95, transition: { duration: 0.15 } },
+}
+const partPath = (i) =>`/monitoring/setup/2${PARTS[i].slug ? `/${PARTS[i].slug}` : ''}`
 
 export function MortgageSetupWizard() {
   const { step, part } = useParams()
@@ -108,7 +117,7 @@ export function MortgageSetupWizard() {
   )
 }
 
-function SetupLayout({ children, footer, onSubmit }) {
+function SetupLayout({ children, footer, onSubmit, aside }) {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-wrap items-start gap-6">
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7 rounded-card bg-card p-5 shadow-card sm:p-7">
@@ -116,6 +125,7 @@ function SetupLayout({ children, footer, onSubmit }) {
         <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">{footer}</div>
       </div>
       <aside className="flex flex-[1_1_280px] flex-col gap-4 lg:sticky lg:top-6">
+        {aside}
         <div className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-[22px]">
           <LockIcon className="size-5 text-primary" aria-hidden />
           <p className="text-sm leading-[21px] text-ink-2">Data yang kamu masukkan tidak dikirim ke bank sampai kamu sendiri memilih untuk mengajukan.</p>
@@ -228,6 +238,38 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
   const fixedUntil = form.bind('fixedUntil')
   const loan = loanPreview(v, clock)
   const impact = floatingPreview(m, v, clock, loan)
+  const estimating = v.knowsOutstanding === 'no' && v.scheme !== 'sharia'
+  // Live estimates sit in the sidebar so they stay in view (sticky on desktop) while the form is filled.
+  // Each estimate pops in when it first appears; the impact one re-pops when its direction flips.
+  // reducedMotion "user": transforms are skipped for prefers-reduced-motion, leaving only the fade.
+  const previews = (
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence>
+        {estimating && loan.outstanding > 0 && (
+          <motion.div key="outstanding" {...POP}>
+            <Notice role="status" icon={PiCalculatorFill}>
+              Perkiraan sisa pokok ± {rupiahShort(loan.outstanding)}, sisa tenor {loan.remaining} bulan ({tenorLabel(loan.remaining)}). Dihitung dari cicilan dan bunga, bukan saldo resmi bank.
+            </Notice>
+          </motion.div>
+        )}
+        {impact && (
+          <motion.div key={impact.direction} {...POP}>
+            {impact.direction === 'increase' ? (
+              <Notice role="status" tone="warn" icon={PiTrendUpFill}>
+                Setelah fixed, cicilan bisa naik jadi ± {rupiahShort(impact.estimatedNextPayment)}/bln (+{rupiahShort(impact.monthlyDelta)}) mulai {dateShort(impact.resetDate)}.
+              </Notice>
+            ) : impact.direction === 'decrease' ? (
+              <Notice role="status" tone="ok" icon={PiTrendDownFill}>
+                Setelah fixed, cicilan diperkirakan turun jadi ± {rupiahShort(impact.estimatedNextPayment)}/bln mulai {dateShort(impact.resetDate)}.
+              </Notice>
+            ) : (
+              <Notice role="status" icon={PiEqualsFill}>Cicilan diperkirakan tidak berubah setelah fixed.</Notice>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </MotionConfig>
+  )
 
   const onSubmit = form.submit((x) =>
     save({
@@ -251,7 +293,7 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
   )
 
   return (
-    <SetupLayout onSubmit={onSubmit} footer={<Footer editing={editing} backTo={backTo} navigate={navigate} saving={saving} />}>
+    <SetupLayout onSubmit={onSubmit} aside={previews} footer={<Footer editing={editing} backTo={backTo} navigate={navigate} saving={saving} />}>
       <UnsavedChangesGuard when={form.dirty && !saving} />
       <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
       <Section title="Data KPR kamu" desc="Tanda * wajib diisi. Dipakai untuk reminder, jadwal amortisasi, dan simulasi.">
@@ -305,24 +347,7 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
             </>
           )}
         </FormGrid>
-        {v.knowsOutstanding === 'no' &&
-          v.scheme !== 'sharia' &&
-          (loan.outstanding ? (
-            <p role="status" className="rounded-2xl bg-secondary px-[18px] py-4 text-sm leading-[21px] font-semibold text-ink-2">
-              Perkiraan sisa pokok ± {rupiahShort(loan.outstanding)}, sisa tenor {loan.remaining} bulan ({tenorLabel(loan.remaining)}). Dihitung dari cicilan dan bunga, bukan saldo resmi bank.
-            </p>
-          ) : (
-            <p className="text-[13px] text-muted-foreground">Isi cicilan, bunga, tenor awal, dan tanggal akad untuk melihat perkiraan.</p>
-          ))}
-        {impact && (
-          <p role="status" className="rounded-2xl bg-secondary px-[18px] py-4 text-sm leading-[21px] font-semibold text-ink-2">
-            {impact.direction === 'increase'
-              ? `Setelah fixed, cicilan bisa naik jadi ± ${rupiahShort(impact.estimatedNextPayment)}/bln (+${rupiahShort(impact.monthlyDelta)}) mulai ${dateShort(impact.resetDate)}.`
-              : impact.direction === 'decrease'
-                ? `Setelah fixed, cicilan diperkirakan turun jadi ± ${rupiahShort(impact.estimatedNextPayment)}/bln mulai ${dateShort(impact.resetDate)}.`
-                : 'Cicilan diperkirakan tidak berubah setelah fixed.'}
-          </p>
-        )}
+        {estimating && !(loan.outstanding > 0) && <p className="text-[13px] text-muted-foreground">Isi cicilan, bunga, tenor awal, dan tanggal akad untuk melihat perkiraan.</p>}
       </Section>
       {error && <Notice tone="bad" role="alert">{error}</Notice>}
     </SetupLayout>
@@ -330,44 +355,94 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
 }
 
 // ---------- Step 2 · Data pendukung (opsional, 3 form) ----------
-// Like Take Over's sub-steps, only the last form moves the draft on to step 3; "Lewati" never saves the form.
-function SupportPart({ i, m, form, toValues, onSaved, editing, backTo, navigate, children }) {
+// Like Take Over's sub-steps, only the last form moves the draft on to step 3. "Lewati" never saves the form,
+// except while `mustSave` (a required field isn't saved yet): then it validates, highlights and saves like Simpan.
+function SupportPart({ i, m, snap, form, toValues, mustSave, onSaved, editing, backTo, navigate, children }) {
   const last = i === PARTS.length - 1
   const next = last ? undefined : partPath(i + 1)
   const { saving, error, save } = useSave(m, last ? 2 : 1, onSaved)
-  const toReminder = () => save({}, { step: 2, quiet: true, to: '/monitoring/setup/3' })
+  const [askIncome, setAskIncome] = useState(false)
+  // Every skip to Reminder runs through here, so Penghasilan (required) is asked first when it isn't saved yet.
+  const toReminder = () => (snap.finance?.monthlyIncome > 0 ? save({}, { step: 2, quiet: true, to: '/monitoring/setup/3' }) : setAskIncome(true))
   const onSubmit = form.submit((x) => {
     const { values, profile } = toValues(x)
     return save(values, { profile, to: next })
   })
   const skip = (
-    <button type="button" disabled={saving} onClick={() => (last ? toReminder() : navigate(next))} className="min-h-11 text-sm font-bold text-primary">
+    <button type="button" disabled={saving} onClick={mustSave ? onSubmit : () => (last ? toReminder() : navigate(next))} className="min-h-11 text-sm font-bold text-primary">
       Lewati
     </button>
   )
   return (
-    <SetupLayout onSubmit={onSubmit} footer={<Footer editing={editing} backTo={backTo} navigate={navigate} saving={saving} extra={!editing && skip} />}>
-      <UnsavedChangesGuard when={form.dirty && !saving} />
-      <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
-      {!editing && (
-        <Notice
-          tone="info"
-          action={
-            !last && (
-              <button type="button" disabled={saving} onClick={toReminder} className="min-h-11 text-[13px] font-bold text-primary underline">
-                Lewati semua ke Reminder
-              </button>
-            )
-          }
-        >
-          3 form opsional. Yang kamu isi tersimpan sekali dan otomatis terpakai saat Take Over atau Refinancing, jadi tidak perlu input ulang.
-        </Notice>
+    <>
+      <SetupLayout onSubmit={onSubmit} footer={<Footer editing={editing} backTo={backTo} navigate={navigate} saving={saving} extra={!editing && skip} />}>
+        <UnsavedChangesGuard when={form.dirty && !saving} />
+        <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
+        {!editing && (
+          <Notice
+            tone="info"
+            icon={PiListChecksFill}
+            title="Wajib hanya nama dan penghasilan bulanan"
+            action={
+              !last && (
+                <button type="button" disabled={saving} onClick={toReminder} className="min-h-11 text-[13px] font-bold text-primary underline">
+                  Lewati semua ke Reminder
+                </button>
+              )
+            }
+          >
+            Sisanya boleh menyusul. Yang kamu isi tersimpan sekali dan otomatis terpakai saat Take Over atau Refinancing, jadi tidak perlu input ulang.
+          </Notice>
+        )}
+        <Section title={PARTS[i].title} desc={`${PARTS[i].desc} ${PARTS[i].required.length ? 'Untuk menyimpan, cukup isi kolom bertanda *. Sisanya bisa menyusul.' : 'Semua kolom boleh kosong, isi yang kamu tahu.'}`} action={<span className="shrink-0 text-xs font-bold text-muted-foreground">Form {i + 1} dari {PARTS.length}</span>}>
+          {children}
+        </Section>
+        {error && <Notice tone="bad" role="alert">{error}</Notice>}
+      </SetupLayout>
+      {/* Outside the page form: React events bubble through portals, so a submit here would submit the page too.
+          Starts from what was typed on this page (Pekerjaan), else the saved profile. */}
+      {askIncome && (
+        <IncomeDialog
+          initial={{ ...profileFormValues(snap.profile ?? {}, snap.finance ?? {}), ...form.values }}
+          saving={saving}
+          error={error}
+          onClose={() => setAskIncome(false)}
+          onSave={(employment) => save({ employment }, { step: 2, profile: employment, to: '/monitoring/setup/3' })}
+        />
       )}
-      <Section title={PARTS[i].title} desc={`${PARTS[i].desc} ${PARTS[i].required.length ? 'Untuk menyimpan, cukup isi kolom bertanda *. Sisanya bisa menyusul.' : 'Semua kolom boleh kosong, isi yang kamu tahu.'}`} action={<span className="shrink-0 text-xs font-bold text-muted-foreground">Form {i + 1} dari {PARTS.length}</span>}>
-        {children}
-      </Section>
-      {error && <Notice tone="bad" role="alert">{error}</Notice>}
-    </SetupLayout>
+    </>
+  )
+}
+
+const INCOME = ['monthlyIncome', 'jointIncome', 'partnerIncome', 'vehicleDebt', 'cardDebt', 'otherDebt']
+const validateIncome = (v) => filledOnly(validateEmploymentBasic(v), v, PARTS[1].required)
+
+// Pop-up before skipping to Reminder: Penghasilan is required, the other debts are optional (KPR Health ratio).
+function IncomeDialog({ initial, saving, error, onClose, onSave }) {
+  const form = useForm(Object.fromEntries(INCOME.map((k) => [k, initial[k]])), validateIncome)
+  const onSubmit = form.submit((x) =>
+    onSave({
+      monthlyIncome: toMoney(x.monthlyIncome),
+      jointIncome: x.jointIncome,
+      partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
+      vehicleDebt: toMoney(x.vehicleDebt),
+      cardDebt: toMoney(x.cardDebt),
+      otherDebt: toMoney(x.otherDebt),
+    }),
+  )
+  return (
+    <FormDialog open onOpenChange={(open) => !open && !saving && onClose()} title="Isi penghasilan dulu" description="Penghasilan bulanan wajib untuk rasio cicilan di KPR Health. Cicilan lain boleh dikosongkan." className="max-w-[560px]">
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        <FormGrid>
+          <IncomeFields form={form} required={PARTS[1].required} />
+        </FormGrid>
+        {error && <Notice tone="bad" role="alert">{error}</Notice>}
+        <Button type="submit" disabled={saving} aria-busy={saving}>
+          {saving && <Spinner />}
+          {saving ? 'Menyimpan…' : 'Simpan & ke Reminder'}
+        </Button>
+      </form>
+    </FormDialog>
   )
 }
 
@@ -375,13 +450,16 @@ function ProfilePart({ i, snap, clock, ...rest }) {
   const personal = i === 0
   const { required } = PARTS[i]
   const validate = useCallback((v) => filledOnly(personal ? validatePersonal(v, { today: clock }) : validateEmploymentBasic(v), v, required), [personal, clock, required])
-  const form = useForm(profileFormValues(snap.profile ?? {}, snap.finance ?? {}), validate)
+  const initial = profileFormValues(snap.profile ?? {}, snap.finance ?? {})
+  const form = useForm(initial, validate)
   const toValues = (x) => {
     const data = personal ? toPersonal(x) : toEmployment(x)
     return { values: { [personal ? 'personal' : 'employment']: data }, profile: data }
   }
+  // The saved data misses a required field (e.g. no Penghasilan yet), so this form can't be skipped.
+  const mustSave = required.some((k) => validate(initial)[k])
   return (
-    <SupportPart i={i} form={form} toValues={toValues} {...rest}>
+    <SupportPart i={i} snap={snap} form={form} toValues={toValues} mustSave={mustSave} {...rest}>
       {personal ? (
         <PersonalFields form={form} clock={clock} contactField={snap.user?.contactType === 'email' ? 'email' : 'phone'} required={required} />
       ) : (

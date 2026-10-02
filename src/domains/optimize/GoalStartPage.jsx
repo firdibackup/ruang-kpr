@@ -9,11 +9,14 @@ import { ErrorSummary, FormGrid, MoneyField, RadioCards, SelectField, TextField 
 import { ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner } from '@/components/shared/ui'
 import { productName, resumePath } from '@/domains/applications/meta'
 import { OptimizeHeader, modeName, useOptimize } from './shared'
-import { validateGoal } from './validation'
+import { takeoverDataFromMortgage, takeoverGaps, validateGoal } from './validation'
 
 const TENORS = [5, 10, 15, 20, 25].map((y) => ({ value: String(y * 12), label: `${y} tahun` }))
+// Forms the KPR setup can skip.
+const SKIPPABLE = { '/optimize/1': 'data pribadi', '/optimize/1/pekerjaan': 'pekerjaan', '/optimize/2': 'data KPR lama', '/optimize/4': 'data properti' }
 
-// Entry from Explore with an active mortgage: reuse its data, ask only the goal (no duplicate wizard).
+// Entry from Explore with an active mortgage: reuse its data, ask only the goal (no duplicate wizard), or first the
+// forms its setup skipped.
 export function GoalStartPage() {
   const [params] = useSearchParams()
   const initialMode = params.get('mode') === 'topup' ? 'topup' : 'takeover'
@@ -48,6 +51,46 @@ export function GoalStartPage() {
   }
   const existing = app ?? otherApp
   const v = form.values
+  const data = takeoverDataFromMortgage(m, { personal: snap.profile ?? {}, employment: { ...snap.profile, ...snap.finance }, goal: {} })
+  const missing = takeoverGaps(data, { today: snap.clock, mode: initialMode }).filter((p) => SKIPPABLE[p])
+
+  // Bank choices need the data skipped in the KPR setup: a prefilled draft opens only those forms, then Tujuan.
+  const completeData = async () => {
+    setPending(true)
+    setApiError('')
+    try {
+      const draft = await api.applications.create({ productType: 'takeover', mode: initialMode, mortgageId: m.id })
+      navigate(takeoverGaps(draft.data, { today: snap.clock, mode: initialMode })[0] ?? '/optimize/5', { state: { from: 'gaps' } })
+    } catch (e) {
+      setApiError(e.message)
+      setPending(false)
+    }
+  }
+  if (missing.length) {
+    return (
+      <>
+        <OptimizeHeader title={`Pengajuan ${modeName(initialMode)}`} subtitle="Memakai data KPR yang kamu pantau. Tidak ada data yang dikirim ke bank." back="/explore" />
+        <Notice
+          tone="warn"
+          title="Lengkapi data pengajuan dulu"
+          action={existing && <Link className="text-[13px] font-bold text-primary underline" to={existing.status === 'draft' ? resumePath(existing) : '/my-kpr/application'}>Buka {productName(existing)}</Link>}
+        >
+          {existing
+            ? `Masih ada pengajuan ${productName(existing)}. Lanjutkan atau hapus dulu.`
+            : `Data KPR kamu belum lengkap: ${missing.map((p) => SKIPPABLE[p]).join(', ')}. Isi dulu, lalu kondisi KPR dan pilihan bank ditampilkan. Data yang sudah ada tidak perlu diisi ulang.`}
+        </Notice>
+        {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
+        {!existing && (
+          <div className="flex justify-end">
+            <Button onClick={completeData} disabled={pending} aria-busy={pending}>
+              {pending && <Spinner />}
+              Lengkapi Data
+            </Button>
+          </div>
+        )}
+      </>
+    )
+  }
 
   const onSubmit = form.submit(async (x) => {
     setPending(true)

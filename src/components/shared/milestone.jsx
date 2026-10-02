@@ -1,9 +1,9 @@
 import { ArrowRightIcon, CircleCheckIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Disclaimer, IconBox, Panel } from './ui'
+import { Disclaimer, IconBox, Panel, Spinner } from './ui'
 
 // Closing screen of a wizard phase (Primary & Take Over): what the data entered so far already tells the user.
-export function MilestonePanel({ title, sub, disclaimer, onBack, onNext, nextLabel, children }) {
+export function MilestonePanel({ title, sub, disclaimer, onBack, onNext, nextLabel, pending = false, children }) {
   return (
     <div className="flex flex-col gap-6">
       <Panel className="gap-5 sm:p-7">
@@ -21,7 +21,8 @@ export function MilestonePanel({ title, sub, disclaimer, onBack, onNext, nextLab
         <Button variant="neutral" onClick={onBack}>
           Kembali
         </Button>
-        <Button onClick={onNext}>
+        <Button onClick={onNext} disabled={pending} aria-busy={pending}>
+          {pending && <Spinner />}
           {nextLabel}
           <ArrowRightIcon aria-hidden />
         </Button>

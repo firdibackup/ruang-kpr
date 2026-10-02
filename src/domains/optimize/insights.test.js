@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { applicationHealth, goalConditions, simulationTeaser } from './insights'
+import { applicationHealth, dtiTone, goalConditions, simulationTeaser } from './insights'
 
 const clock = '2026-09-30'
 const data = {
   employment: { monthlyIncome: 15_000_000 },
   oldLoan: { originalPrincipal: 500_000_000, outstanding: 400_000_000, currentPayment: 5_000_000, rateBps: 1050, rateType: 'floating', remainingMonths: 180, dueDay: 12 },
-  finance: { vehicleDebt: 1_000_000, cardDebt: 500_000, otherDebt: 0, fundsForCosts: 25_000_000 },
+  finance: { vehicleDebt: 1_000_000, cardDebt: 500_000, otherDebt: 0 },
   property: { estimatedValue: 800_000_000 },
 }
 
@@ -78,5 +78,11 @@ describe('simulationTeaser', () => {
 
   it('says so when no program matches', () => {
     expect(simulationTeaser({ items: [], input: { mode: 'topup', requestedTopup: 100_000_000 } })).toBe('Belum ada program yang cocok')
+  })
+})
+
+describe('dtiTone', () => {
+  it('uses the 35% guideline and the 45% ceiling some banks accept', () => {
+    expect([null, 0.35, 0.36, 0.45, 0.46].map(dtiTone)).toEqual([undefined, 'ok', 'warn', 'warn', 'bad'])
   })
 })

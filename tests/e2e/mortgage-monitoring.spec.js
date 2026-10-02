@@ -95,6 +95,8 @@ test('monitoring: 3-step setup (KPR wajib, data pendukung sebagian dilewati) →
 
   await expect(page.getByText('Fixed rate berakhir 85 hari lagi')).toBeVisible()
   await expect(page.locator('main canvas, main [data-chart]')).toHaveCount(0) // no charts on Home
+  await expect(page.getByRole('table', { name: /Tiga cicilan berikutnya/ }).getByRole('row')).toHaveCount(4) // header + 3 cicilan
+  await expect(page.getByRole('link', { name: 'Lihat jadwal amortisasi' })).toHaveAttribute('href', '/my-kpr/amortization')
 
   await page.goto('/my-kpr/property')
   await expect(page.getByRole('link', { name: 'Lengkapi data properti' })).toHaveAttribute('href', '/monitoring/setup/2/properti?edit=property')
@@ -117,6 +119,31 @@ test('monitoring: 3-step setup (KPR wajib, data pendukung sebagian dilewati) →
   await expect(page.getByText('Mulai periode floating — estimasi 9,00%')).toBeVisible()
 })
 
+test('Data pendukung: Lewati cannot skip Penghasilan; Lewati semua asks for it in a pop-up', async ({ page }) => {
+  await useScenario(page, 'fresh', '/monitoring/intro')
+  await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
+  await fillKprStep(page)
+  await skip(page) // Nama comes from register
+  await expect(page).toHaveURL(/setup\/2\/pekerjaan$/)
+  // Penghasilan isn't saved yet: Lewati highlights it instead of moving on.
+  await skip(page)
+  await expect(page).toHaveURL(/setup\/2\/pekerjaan$/)
+  await expect(page.getByLabel('Penghasilan bulanan')).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.getByLabel('Jenis pekerjaan')).not.toHaveAttribute('aria-invalid', 'true')
+
+  await page.getByRole('button', { name: 'Lewati semua ke Reminder' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Isi penghasilan dulu' })
+  const income = dialog.getByLabel('Penghasilan bulanan')
+  await dialog.getByRole('button', { name: 'Simpan & ke Reminder' }).click()
+  await expect(income).toHaveAttribute('aria-invalid', 'true')
+  await expect(income).toBeFocused() // not the highlighted field behind the dialog
+  await income.fill('15000000')
+  await dialog.getByLabel('Cicilan kendaraan').fill('1000000')
+  await dialog.getByRole('button', { name: 'Simpan & ke Reminder' }).click()
+  await expect(page).toHaveURL(/setup\/3$/)
+  await expect(page.getByText('Penghasilan Rp15.000.000/bulan')).toBeVisible()
+})
+
 test('old setup draft resumes on the last step in the new 3-step language', async ({ page }) => {
   await useScenario(page, 'mortgage_setup_step_3', '/')
   await expect(page.getByText('Bagian 3 dari 3 · Reminder')).toBeVisible()
@@ -129,7 +156,7 @@ test('old setup draft resumes on the last step in the new 3-step language', asyn
   await expect(page.locator('main ol > li')).toHaveText([/Data KPR/, /Data pendukung/, /Reminder/])
 })
 
-test('Data pendukung from the KPR setup fills Take Over, so it is not typed again; skipped parts are flagged', async ({ page }) => {
+test('Data pendukung from the KPR setup fills Take Over, so it is not typed again; skipped parts are asked before the bank choices', async ({ page }) => {
   await useScenario(page, 'fresh', '/monitoring/intro')
   await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
   await fillKprStep(page)
@@ -147,21 +174,37 @@ test('Data pendukung from the KPR setup fills Take Over, so it is not typed agai
   await activate(page)
 
   await page.goto('/optimize/start?mode=takeover')
+  // Data properti was skipped in the setup: it is asked before any bank choice; data already given is not.
+  await expect(page.getByText('Lengkapi data pengajuan dulu')).toBeVisible()
+  await expect(page.getByText(/belum lengkap: data properti\./)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Lihat Kondisi KPR' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Lengkapi Data' }).click()
+  await expect(page).toHaveURL(/optimize\/4$/) // only the skipped Data properti
+  await expect(page.getByText('Lengkapi data pengajuan', { exact: true })).toBeVisible()
+  await page.getByLabel('Jenis properti').selectOption('landed_house')
+  await page.getByLabel('Kota / Kabupaten').selectOption('Kota Bekasi')
+  await page.getByLabel('Alamat', { exact: true }).fill('Griya Asri Blok C2 No. 8')
+  await page.getByLabel('Luas tanah').fill('72')
+  await page.getByLabel('Luas bangunan').fill('45')
+  await page.getByLabel('Status sertifikat').selectOption('shm')
+  await save(page)
+  await expect(page).toHaveURL(/optimize\/5$/) // Tujuan, then the bank choices
+  await page.getByRole('radio', { name: /Pindah KPR tanpa dana tambahan/ }).click()
+  await page.getByRole('radio', { name: 'Cicilan bulanan lebih ringan' }).click()
+  await page.getByLabel('Tenor baru yang diinginkan').selectOption('180')
   await page.getByRole('button', { name: 'Lihat Kondisi KPR' }).click()
+  await expect(page).toHaveURL(/optimize\/baseline/)
   await page.getByRole('button', { name: 'Bandingkan Program' }).click()
   await page.getByRole('button', { name: 'Lihat Detail' }).first().click()
   await page.getByRole('button', { name: /^Ajukan / }).click()
   await page.getByRole('button', { name: 'Lanjut Dokumen' }).click()
-  await expect(page).toHaveURL(/optimize\/6/)
+  await expect(page).toHaveURL(/optimize\/6/) // nothing left to ask
   await page.getByRole('button', { name: 'Unggah semua (demo)' }).click()
   await expect(page.getByRole('button', { name: 'Simpan & Lanjutkan' })).toHaveAttribute('aria-disabled', 'false', { timeout: 30_000 })
   await save(page)
 
   await expect(page).toHaveURL(/optimize\/7/)
   await expect(page.getByText('Karyawan Swasta · PT Nusantara Digital')).toBeVisible()
-  await expect(page.getByText('Lengkapi data pribadi.')).toHaveCount(0)
-  await expect(page.getByText('Lengkapi pekerjaan & penghasilan.')).toHaveCount(0)
-  await expect(page.getByText('Lengkapi data properti.')).toBeVisible() // skipped in the setup
   await page.goto('/optimize/1')
   await expect(page.getByLabel('NIK')).toHaveValue('3174012345678901')
 })

@@ -1,7 +1,7 @@
 import { dayMonth } from '@/lib/format'
 
 export const PRIMARY_STEPS = ['Data Diri', 'Pekerjaan & Penghasilan', 'Properti', 'Pinjaman', 'Upload Dokumen', 'Bandingkan Program Bank', 'Review & Submit']
-export const TAKEOVER_STEPS = ['Profil & pekerjaan', 'KPR lama', 'Kemampuan bayar', 'Properti', 'Tujuan', 'Dokumen', 'Review']
+export const TAKEOVER_STEPS = ['Profil & pekerjaan', 'KPR lama', 'Gambaran KPR lama', 'Properti', 'Tujuan', 'Dokumen', 'Review']
 
 // The 7 Primary screens grouped into 3 phases. The percent runs fast early so the form feels far along.
 export const PRIMARY_PHASES = [
@@ -20,7 +20,7 @@ function phaseProgress(phases, percents, screen) {
 }
 export const primaryProgress = (screen) => phaseProgress(PRIMARY_PHASES, PRIMARY_PERCENT, screen)
 
-// Take Over has 9 progress screens: 1 Data pribadi, 2 Pekerjaan, 3 KPR lama, 4 Kemampuan bayar, 5 Properti,
+// Take Over has 9 progress screens: 1 Data pribadi, 2 Pekerjaan, 3 KPR lama, 4 Gambaran KPR lama, 5 Properti,
 // 6 Tujuan, 7 Baseline & program, 8 Dokumen, 9 Review. Phase ends land on the same 45% / 75% as Primary.
 export const TAKEOVER_PHASES = [
   { label: 'Kamu & KPR Lama', screens: [1, 2, 3] },
@@ -45,6 +45,8 @@ export const draftProgress = (app) =>
   app.productType === 'primary' ? primaryProgress(Math.min(app.currentStep, PRIMARY_STEPS.length)) : takeoverProgress(takeoverScreenOf(app))
 
 export const productName = (app) => (app.productType === 'primary' ? 'KPR Primary' : app.optimizationMode === 'topup' ? 'Take Over + Top-up' : 'Take Over')
+// Cancelling a Take Over keeps its typed data for the next draft (applications.cancel); the delete dialogs say so.
+export const keptDataNote = (app) => (app.productType === 'takeover' ? 'Data yang sudah kamu isi tetap tersimpan, jadi pengajuan Take Over berikutnya langsung terisi.' : undefined)
 export const stepsOf = (app) => (app.productType === 'primary' ? PRIMARY_STEPS : TAKEOVER_STEPS)
 
 export function resumePath(app) {

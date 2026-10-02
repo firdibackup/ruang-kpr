@@ -430,7 +430,6 @@ function ProgramDetail({ sim, item }) {
                     { k: `Net saving sampai ${tenorLabel(x.horizonMonths)}`, v: rupiah(x.netSaving), tone: x.netSaving >= 0 ? 'ok' : 'bad' },
                     { k: 'Total bunga', v: rupiah(x.totalInterest) },
                     { k: 'Estimasi DTI', v: `${percentRatio(x.dtiRatio)} (batas ${x.maxDtiBps / 100}%)`, tone: eligTone },
-                    x.fundsCoverCosts !== null && { k: 'Dana kamu untuk biaya', v: x.fundsCoverCosts ? 'Cukup' : 'Kurang', tone: x.fundsCoverCosts ? 'ok' : 'warn' },
                   ]
             }
           />

@@ -1,9 +1,10 @@
 // Mock implementation of the API contract (doc 04). Async like a real backend, persists through mockDb,
 // throws ApiError for expected failures. Financial math comes from src/calculations — never inline here.
-import { addMonths, countDueDatesBetween, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
-import { CalculationError, calculateMaxPrincipal, calculateOutstanding, solveAnnualRateBps } from '@/calculations/finance'
+import { addMonths, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
+import { CalculationError, calculateMaxPrincipal } from '@/calculations/finance'
 import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
 import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
+import { takeoverDataFromMortgage, takeoverGaps } from '@/domains/optimize/validation'
 import { ApiError } from './apiError'
 import { ARTICLES } from './articles'
 import { BANK_PRODUCTS } from './catalog'
@@ -109,6 +110,24 @@ function primaryInput(app) {
     fail('CALCULATION_INPUT_INCOMPLETE', 'Lengkapi data pinjaman dan penghasilan dulu.', 400)
   }
   return { loanAmount: l.amount, tenorMonths: l.tenorMonths, propertyPrice: p.price, propertyType: p.propertyType, ...profileInput(app) }
+}
+
+// What prices or qualifies a program (profileInput, primaryInput, simulationSource): a change drops the chosen program.
+// KTP data, company and job title keep it.
+function pricingInputs(app) {
+  const { employment: e = {}, finance: f = {}, property: p = {} } = app.data
+  return JSON.stringify([
+    app.data.loan,
+    p.price,
+    p.estimatedValue,
+    p.disputed,
+    app.data.oldLoan,
+    app.data.goal,
+    app.productType === 'primary' ? e.occupation : null,
+    (e.monthlyIncome ?? 0) + (e.jointIncome ? e.partnerIncome ?? 0 : 0),
+    (e.vehicleDebt ?? 0) + (e.cardDebt ?? 0) + (e.otherDebt ?? 0),
+    (f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0),
+  ])
 }
 
 function selectionFrom(product, fields) {
@@ -288,7 +307,6 @@ function simulationSource(db, source) {
       disputed: p.disputed === true,
       monthlyIncome: (e.monthlyIncome ?? 0) + (e.jointIncome ? e.partnerIncome ?? 0 : 0),
       otherDebt: (f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0),
-      fundsForCosts: f.fundsForCosts ?? null,
       excludedProductIds: app.excludedProductIds ?? [],
     }
   }
@@ -301,7 +319,6 @@ function simulationSource(db, source) {
     disputed: m.property?.disputed === true,
     monthlyIncome: (f.monthlyIncome ?? 0) + (f.jointIncome ? f.partnerIncome ?? 0 : 0),
     otherDebt: (f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0),
-    fundsForCosts: null,
     excludedProductIds: [],
   }
 }
@@ -324,7 +341,6 @@ function runSimulation(db, sim, sort) {
     disputed: src.disputed,
     monthlyIncome: src.monthlyIncome,
     otherDebt: src.otherDebt,
-    fundsForCosts: src.fundsForCosts,
   }
   try {
     const baseline = takeoverBaseline({ ...l, asOf: db.clock })
@@ -458,22 +474,31 @@ export function createMockApi({ latencyMs = 300 } = {}) {
 
     applications: {
       get: call('applications.get', (db, id) => decorate(findApp(db, id))),
-      create: call('applications.create', (db, { productType, purchaseType, mode }) => {
+      create: call('applications.create', (db, { productType, purchaseType, mode, mortgageId }) => {
         const current = activeApplication(db.applications)
         if (current) fail('ACTIVE_DRAFT_EXISTS', 'Kamu masih punya pengajuan aktif. Lanjutkan atau hapus dulu.', 409, { details: { applicationId: current.id } })
         if (productType === 'primary' && activeMortgageOf(db)) {
           fail('ACTIVE_MORTGAGE_EXISTS', 'Versi ini mendukung satu KPR aktif per akun.', 409)
         }
+        if (productType === 'takeover' && mortgageId) {
+          // Take Over from a monitored KPR with skipped data: prefilled, so it opens the missing forms and then Tujuan.
+          const m = findMortgage(db, mortgageId)
+          const app = newApplication(db, { productType, mode, source: 'mortgage', mortgageId: m.id, data: takeoverDataFromMortgage(m, { personal: prefilledPersonal(db), employment: prefilledEmployment(db), goal: { mode: mode ?? null } }) })
+          app.currentStep = 5
+          return app
+        }
+        // A cancelled Take Over left its old loan, property and finance behind (see cancel): start from them.
+        const kept = structuredClone(db.takeoverKept ?? {})
         const data =
           productType === 'primary'
             ? { personal: prefilledPersonal(db), employment: prefilledEmployment(db), property: { purchaseType }, loan: {} }
-            : { personal: prefilledPersonal(db), employment: prefilledEmployment(db), oldLoan: {}, goal: { mode: mode ?? null }, property: {}, finance: {} }
+            : { personal: prefilledPersonal(db), employment: prefilledEmployment(db), oldLoan: kept.oldLoan ?? {}, goal: { mode: mode ?? null }, property: kept.property ?? {}, finance: kept.finance ?? {} }
         return newApplication(db, { productType, mode, data })
       }),
       saveStep: call('applications.saveStep', (db, id, { step, values }) => {
         const app = findApp(db, id)
         if (app.status !== 'draft') fail('INVALID_STATE_TRANSITION', 'Pengajuan sudah dikirim dan hanya bisa dilihat.', 400)
-        const before = JSON.stringify([app.data.loan, app.data.property?.price, app.data.employment, app.data.oldLoan, app.data.goal, app.data.finance, app.data.property?.estimatedValue])
+        const before = pricingInputs(app)
         const previousPurchase = app.data.property?.purchaseType
         for (const [section, patch] of Object.entries(values)) app.data[section] = { ...(app.data[section] ?? {}), ...patch }
         if (values.goal?.mode) app.optimizationMode = values.goal.mode
@@ -482,8 +507,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
           app.data.property.sellerName = null
           delete app.documents.property_document
         }
-        const after = JSON.stringify([app.data.loan, app.data.property?.price, app.data.employment, app.data.oldLoan, app.data.goal, app.data.finance, app.data.property?.estimatedValue])
-        if (app.selection && before !== after) {
+        if (app.selection && before !== pricingInputs(app)) {
           app.selection = null
           if (app.productType === 'primary') app.currentStep = Math.min(app.currentStep, 6)
         }
@@ -574,6 +598,9 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (!consents?.dataAccuracy || !consents?.sendToBank) fail('CONSENT_REQUIRED', 'Centang kedua persetujuan untuk submit.', 422)
         const p = app.data.personal ?? {}
         if (!p.fullName || !/^\d{16}$/.test(p.nik ?? '')) fail('VALIDATION_FAILED', 'Data pribadi belum lengkap.', 400)
+        if (app.productType === 'takeover' && takeoverGaps(app.data, { today: db.clock, mode: app.optimizationMode }).length) {
+          fail('VALIDATION_FAILED', 'Lengkapi data pengajuan dulu.', 400)
+        }
         app.status = 'submitted'
         app.submittedAt = nowIso(db)
         app.consents = { ...consents, acceptedAt: app.submittedAt, version: '2026-09-01' }
@@ -591,12 +618,15 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         return app
       }),
       // Mock hard delete per current product decision. Production must confirm retention/compliance first.
+      // Take Over keeps what the user typed for the next draft; personal and job data already live on the profile.
       cancel: call('applications.cancel', (db, id) => {
         const app = findApp(db, id)
         if (!CANCELLABLE.includes(app.status)) fail('INVALID_STATE_TRANSITION', 'Pengajuan pada tahap ini tidak bisa dibatalkan.', 400)
+        const keeps = app.productType === 'takeover'
+        if (keeps) db.takeoverKept = structuredClone({ oldLoan: app.data.oldLoan, property: app.data.property, finance: app.data.finance })
         db.applications = db.applications.filter((a) => a.id !== id)
         if (db.simulation?.source?.id === id) db.simulation = null
-        if (app.status !== 'draft') pushActivity(db, { type: 'application_cancelled', category: 'application', title: 'Pengajuan dibatalkan', body: 'Data pengajuan dan dokumen terkait sudah dihapus.' })
+        if (app.status !== 'draft') pushActivity(db, { type: 'application_cancelled', category: 'application', title: 'Pengajuan dibatalkan', body: keeps ? 'Pengajuan dan dokumen terkait sudah dihapus. Data yang kamu isi tetap tersimpan untuk pengajuan berikutnya.' : 'Data pengajuan dan dokumen terkait sudah dihapus.' })
         return { deleted: true, wasDraft: app.status === 'draft' }
       }),
       retrySameBank: call('applications.retrySameBank', (db, id) => {
@@ -664,19 +694,6 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (m.status === 'draft') m.setupStep = Math.min(3, Math.max(m.setupStep, step + 1))
         touch(db, m)
         return m
-      }),
-      estimate: call('mortgages.estimate', (db, { originalPrincipal, currentPayment, originalTenorMonths, startDate, dueDay, paymentEverChanged }) => {
-        if (paymentEverChanged) fail('OFFICIAL_OUTSTANDING_REQUIRED', 'Cicilan pernah berubah. Gunakan angka resmi dari bank.', 422)
-        const paidMonths = countDueDatesBetween({ startDate, today: db.clock, dueDay })
-        if (paidMonths >= originalTenorMonths) fail('CALCULATION_FAILED', 'Tanggal akad dan tenor menunjukkan KPR sudah selesai.', 400)
-        try {
-          const solved = solveAnnualRateBps({ principal: originalPrincipal, payment: currentPayment, termMonths: originalTenorMonths })
-          const out = calculateOutstanding({ originalPrincipal, annualRateBps: solved.annualRateBps, originalTermMonths: originalTenorMonths, paidMonths })
-          return { effectiveRateBps: solved.annualRateBps, outstanding: out.outstanding, remainingMonths: out.remainingMonths, paidMonths, estimated: true }
-        } catch (e) {
-          if (e instanceof CalculationError) fail('CALCULATION_FAILED', e.message, 400)
-          throw e
-        }
       }),
       activate: call('mortgages.activate', (db, id, { confirmDataCorrect }) => {
         const m = findMortgage(db, id)
@@ -802,31 +819,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
             mode: sim.input.mode,
             source: 'mortgage',
             mortgageId: m.id,
-            data: {
-              personal: prefilledPersonal(db),
-              employment: { ...prefilledEmployment(db), monthlyIncome: m.finance?.monthlyIncome ?? null },
-              oldLoan: {
-                bankName: m.bankName,
-                productName: m.productName,
-                originalPrincipal: m.originalPrincipal,
-                currentPayment: m.currentPayment,
-                originalTenorMonths: m.originalTenorMonths,
-                startDate: m.startDate,
-                dueDay: m.dueDay,
-                paymentEverChanged: m.paymentEverChanged,
-                outstanding: m.outstandingPrincipal,
-                rateBps: m.currentRateBps,
-                rateType: m.currentRateType,
-                fixedUntil: m.fixedUntil,
-                floatingRateBps: m.estimatedFloatingRateBps,
-                remainingMonths: m.remainingTenorMonths,
-                penaltyBps: null,
-                source: m.outstandingEstimated ? 'estimate' : 'official',
-              },
-              goal: { ...sim.input, tenorMonths: x.tenorMonths },
-              property: { propertyType: m.property?.type, city: m.property?.city, address: m.property?.address, landArea: m.property?.landArea, buildingArea: m.property?.buildingArea, certificateType: m.property?.certificateType, certificateOwner: m.property?.certificateOwner, estimatedValue: m.property?.estimatedValue ?? null, disputed: m.property?.disputed === true },
-              finance: { vehicleDebt: m.finance?.vehicleDebt ?? 0, cardDebt: m.finance?.cardDebt ?? 0, otherDebt: m.finance?.otherDebt ?? 0, fundsForCosts: null },
-            },
+            data: takeoverDataFromMortgage(m, { personal: prefilledPersonal(db), employment: prefilledEmployment(db), goal: { ...sim.input, tenorMonths: x.tenorMonths } }),
           })
           db.simulation = { ...sim, source: { type: 'application', id: app.id } }
         }

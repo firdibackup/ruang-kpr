@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import {
   ArrowRightIcon,
   BanknoteIcon,
-  BellRingIcon,
   CircleXIcon,
   ClockIcon,
   CloudCheckIcon,
@@ -42,6 +41,7 @@ import {
 import { RejectedActions } from "@/domains/applications/RejectedActions";
 import {
   draftProgress,
+  keptDataNote,
   productName,
   resumePath,
   trackerSteps,
@@ -253,18 +253,15 @@ function MonitoringEntry() {
   return (
     // Second entry point after the product hero: a primary-tinted surface so it reads as an offer, not a footnote.
     <section className="flex flex-wrap items-center gap-x-5 gap-y-4 rounded-card border border-primary/20 bg-[linear-gradient(100deg,#dbe6f8_0%,var(--secondary)_50%,#f3f7fe_100%)] p-5 shadow-card sm:px-7 sm:py-6">
-      <span className="relative shrink-0 self-start sm:self-center">
-        <IconBox
-          icon={BellRingIcon}
-          size="xl"
-          tone="solid"
-          className="shadow-[0_8px_18px_#003da53d]"
-        />
-        <span
-          className="absolute -top-1 -right-1 size-3.5 rounded-full bg-brand-red ring-[3px] ring-[#dbe6f8]"
-          aria-hidden
-        />
-      </span>
+      {/* Illustration carries ~18% transparent padding; the negative margin keeps the visible tile at the old icon footprint. */}
+      <img
+        src="/card-kpr.webp"
+        alt=""
+        width={800}
+        height={800}
+        decoding="async"
+        className="-m-3 size-32 shrink-0 self-start sm:self-center"
+      />
       <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
         <h2 className="text-lg leading-6 font-extrabold">
           Sudah punya KPR yang berjalan?
@@ -466,6 +463,7 @@ function DraftHero({ app, onDeleted }) {
         onOpenChange={setConfirm}
         title="Hapus draft pengajuan?"
         body={`Draft ${productName(app)} beserta dokumen yang sudah diunggah akan dihapus permanen.`}
+        note={keptDataNote(app)}
         onConfirm={async () => {
           await api.applications.cancel(app.id);
           toast("Draft dihapus.");

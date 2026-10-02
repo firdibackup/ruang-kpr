@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, SelectField, TextAreaField, TextField } from '@/components/shared/fields'
 import { ConfirmDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { WizardProgress } from '@/components/shared/progress'
 import { Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner, SummaryRows } from '@/components/shared/ui'
 import { useSession } from '@/domains/session/SessionProvider'
 import { ReminderSettingsForm, reminderSummary } from '@/domains/mortgages/ReminderSettingsForm'
@@ -135,15 +136,33 @@ export function ProfileEditPage() {
   return <ProfileForm snap={snap} />
 }
 
+const PROFILE_STEPS = ['Data pribadi', 'Pekerjaan & penghasilan']
+
 function ProfileForm({ snap }) {
   const navigate = useNavigate()
   const p = snap.profile ?? {}
   const f = snap.finance ?? {}
   const validate = useCallback((v) => ({ ...validatePersonal(v, { today: snap.clock }), ...validateEmploymentBasic(v) }), [snap.clock])
   const form = useForm(profileFormValues(p, f), validate)
+  const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [apiError, setApiError] = useState('')
   const contactField = snap.user?.contactType === 'email' ? 'email' : 'phone'
+  // Same as a route change in AppShell: back to the top, focus on <main> for screen readers.
+  const toStep = (n) => {
+    setStep(n)
+    window.scrollTo(0, 0)
+    document.getElementById('main')?.focus({ preventScroll: true })
+  }
+  // Step 1 only gates its own fields (marked via touch), so step 2 doesn't open already red.
+  const next = (e) => {
+    e.preventDefault()
+    const own = e.currentTarget
+    const bad = Object.keys(validatePersonal(form.values, { today: snap.clock }))
+    if (!bad.length) return toStep(2)
+    bad.forEach((k) => form.blur(k))
+    setTimeout(() => own.querySelector('[aria-invalid="true"]')?.focus(), 0)
+  }
   const onSubmit = form.submit(async (x) => {
     setSaving(true)
     setApiError('')
@@ -167,35 +186,47 @@ function ProfileForm({ snap }) {
   return (
     <>
       <PageHeader title="Edit profil" subtitle="Dipakai untuk mengisi otomatis pengajuan berikutnya." back="/profile" />
-      <form onSubmit={onSubmit} noValidate className="flex max-w-[860px] flex-col gap-5">
+      <form onSubmit={step === 1 ? next : onSubmit} noValidate className="flex max-w-[860px] flex-col gap-5">
         <UnsavedChangesGuard when={form.dirty && !saving} />
+        <WizardProgress label={`Langkah ${step} dari 2 · ${PROFILE_STEPS[step - 1]}`} steps={PROFILE_STEPS} current={step} savedLabel="Tersimpan setelah klik Simpan Profil" />
         <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
-        <Notice tone="info">Perubahan tidak memengaruhi snapshot pengajuan yang sudah dikirim. Kontak terverifikasi ({contactField === 'email' ? 'email' : 'nomor ponsel'}) belum bisa diubah pada versi ini karena butuh verifikasi OTP ulang.</Notice>
-        <Panel className="gap-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <IconBox icon={UserIcon} />
-            <h2 className="text-lg font-extrabold">Data pribadi</h2>
-          </div>
-          <PersonalFields form={form} clock={snap.clock} contactField={contactField} />
-        </Panel>
-        <Panel className="gap-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <IconBox icon={BriefcaseIcon} />
-            <h2 className="text-lg font-extrabold">Pekerjaan & penghasilan</h2>
-          </div>
-          <FormGrid>
-            <JobFields form={form} />
-            <IncomeFields form={form} />
-          </FormGrid>
-        </Panel>
+        {step === 1 ? (
+          <>
+            <Notice tone="info">Perubahan tidak memengaruhi snapshot pengajuan yang sudah dikirim. Kontak terverifikasi ({contactField === 'email' ? 'email' : 'nomor ponsel'}) belum bisa diubah pada versi ini karena butuh verifikasi OTP ulang.</Notice>
+            <Panel className="gap-5 sm:p-7">
+              <div className="flex items-center gap-3">
+                <IconBox icon={UserIcon} />
+                <h2 className="text-lg font-extrabold">Data pribadi</h2>
+              </div>
+              <PersonalFields form={form} clock={snap.clock} contactField={contactField} />
+            </Panel>
+          </>
+        ) : (
+          <Panel className="gap-5 sm:p-7">
+            <div className="flex items-center gap-3">
+              <IconBox icon={BriefcaseIcon} />
+              <h2 className="text-lg font-extrabold">Pekerjaan & penghasilan</h2>
+            </div>
+            <FormGrid>
+              <JobFields form={form} />
+              <IncomeFields form={form} />
+            </FormGrid>
+          </Panel>
+        )}
         {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
         <div className="flex justify-between gap-3">
-          <Button variant="neutral" onClick={() => navigate('/profile')}>
-            Batal
-          </Button>
+          {step === 1 ? (
+            <Button variant="neutral" onClick={() => navigate('/profile')}>
+              Batal
+            </Button>
+          ) : (
+            <Button variant="neutral" onClick={() => toStep(1)}>
+              Kembali
+            </Button>
+          )}
           <Button type="submit" disabled={saving} aria-busy={saving}>
             {saving && <Spinner />}
-            Simpan Profil
+            {step === 1 ? 'Lanjut' : 'Simpan Profil'}
           </Button>
         </div>
       </form>

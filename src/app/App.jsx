@@ -16,7 +16,6 @@ import { HealthPage } from '@/domains/mortgages/HealthPage'
 import { ExplorePage, EducationPage } from '@/domains/explore/ExplorePages'
 import { OptimizeIntro, OptimizeSuccess } from '@/domains/optimize/OptimizeIntro'
 import { OptimizeStepPage } from '@/domains/optimize/OptimizeSteps'
-import { OldLoanEstimatePage, OldLoanOfficialPage } from '@/domains/optimize/OldLoanPages'
 import { GoalStartPage } from '@/domains/optimize/GoalStartPage'
 import { BaselinePage, ProgramsPage, ProgramDetailPage, ConfirmProgramPage } from '@/domains/optimize/ProgramPages'
 import { ActivityPage } from '@/domains/activity/ActivityPage'
@@ -57,8 +56,6 @@ const router = createBrowserRouter([
           { path: 'optimize/intro', element: <OptimizeIntro /> },
           { path: 'optimize/start', element: <GoalStartPage /> },
           { path: 'optimize/1/pekerjaan', element: <OptimizeStepPage employment /> },
-          { path: 'optimize/2/estimasi', element: <OldLoanEstimatePage /> },
-          { path: 'optimize/2/resmi', element: <OldLoanOfficialPage /> },
           { path: 'optimize/baseline', element: <BaselinePage /> },
           { path: 'optimize/programs', element: <ProgramsPage /> },
           { path: 'optimize/programs/:productId', element: <ProgramDetailPage /> },

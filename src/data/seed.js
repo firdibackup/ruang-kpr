@@ -335,7 +335,7 @@ function takeoverInProcess(mortgage) {
       },
       goal: { mode: 'takeover', goal: 'lower_payment', tenorMonths: 180, maxPayment: null, requestedTopup: 0, purpose: null },
       property: { propertyType: 'landed_house', city: PROPERTY.city, address: PROPERTY.address, landArea: 72, buildingArea: 45, certificateType: 'shm', certificateOwner: 'Firdi Audi', estimatedValue: PROPERTY.estimatedValue, disputed: false },
-      finance: { vehicleDebt: 1_000_000, cardDebt: 500_000, otherDebt: 0, fundsForCosts: 25_000_000 },
+      finance: { vehicleDebt: 1_000_000, cardDebt: 500_000, otherDebt: 0 },
     },
     documents: {},
     selection: {

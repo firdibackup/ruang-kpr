@@ -300,7 +300,6 @@ export function evaluateTakeoverProduct({ product, baseline, input, asOf, plafon
     reasons,
     purposeOk,
     paymentWithinCap: !input.maxPayment || sim.payment <= input.maxPayment,
-    fundsCoverCosts: topup || input.fundsForCosts == null ? null : input.fundsForCosts >= upfront,
     upfrontCosts: upfront,
     totalCost: sim.totalPayment + comparison.costs.totalEconomicCost,
   }

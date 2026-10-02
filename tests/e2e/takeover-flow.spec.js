@@ -28,6 +28,7 @@ test('take over from Explore: simulation creates no application; apply → docs 
   await page.getByRole('button', { name: /^Ajukan / }).click()
   await expect(page.getByText('Pengajuan ini hanya dikirim ke satu bank/program.')).toBeVisible()
   await page.getByRole('button', { name: 'Lanjut Dokumen' }).click()
+  // The monitored KPR has everything the forms need, so Dokumen comes next.
   await expect(page).toHaveURL(/optimize\/6/)
   await expect(page.getByText('KPR LAMA', { exact: true })).toBeVisible() // take-over specific documents
   await page.getByRole('button', { name: 'Unggah semua (demo)' }).click()
@@ -48,7 +49,7 @@ test('take over from Explore: simulation creates no application; apply → docs 
   await expect(page.getByRole('list', { name: 'Status pengajuan' })).toContainText('Pelunasan KPR Lama')
 })
 
-test('cold-entry take over: 5 data steps (changed payment → official figures) → baseline → programs', async ({ page }) => {
+test('cold-entry take over: 5 data steps (official figures) → baseline → programs', async ({ page }) => {
   await useScenario(page, 'fresh', '/')
   await page.getByRole('button', { name: /^Take Over/ }).click()
   await expect(page).toHaveURL(/optimize\/intro/)
@@ -66,36 +67,30 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await save()
   await expect(page).toHaveURL(/optimize\/2$/)
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
+  // Bunga is always asked; only sisa pokok may be estimated, live from cicilan, bunga and sisa tenor.
+  await page.getByRole('radio', { name: 'Tidak' }).click()
+  await expect(page.getByText(/Perkiraan sisa pokok ±/)).toBeVisible()
+  await page.getByRole('radio', { name: 'Ya' }).click()
   await save()
 
-  await expect(page).toHaveURL(/optimize\/2\/resmi/) // payment changed → no single-rate estimate
-  await expect(page.getByText('Kami tidak menghitung balik bunga')).toBeVisible()
-  await page.getByLabel('Sisa pokok saat ini').fill('421500000')
-  await page.getByLabel('Bunga saat ini').fill('10,50')
-  await page.getByRole('radio', { name: 'Floating' }).click()
-  await page.getByLabel('Sisa tenor').fill('181')
-  await save()
-
-  // Phase 1 milestone: what staying with the old bank looks like.
-  await expect(page).toHaveURL(/optimize\/3/)
+  // Phase 1 milestone (/optimize/3 has no form): what staying with the old bank looks like.
+  await expect(page).toHaveURL(/optimize\/3$/)
   await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toBeVisible()
   await expect(page.getByText('45% selesai.')).toBeAttached()
   await expect(page.getByText('Sisa bunga jika tetap')).toBeVisible()
   await expect(page.getByText('Pokok sudah lunas')).toBeVisible()
   await expect(page.getByText('Floating', { exact: true })).toBeVisible()
+  // Debts come from Pekerjaan: (5 jt KPR + 1,5 jt lain) / 15 jt is above the 35% guideline.
+  await expect(page.getByText(/Rasio cicilan \(DTI\)/)).toBeVisible()
+  await expect(page.getByText(/Di atas batas aman 35%/)).toBeVisible()
   await page.getByRole('button', { name: 'Lanjut ke Tahap 2' }).click()
-  await page.reload() // "Lanjut" replaced the milestone entry: reloading stays on the form
-  await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toHaveCount(0)
 
-  await expect(page).toHaveURL(/optimize\/3/) // Kemampuan bayar
+  await expect(page).toHaveURL(/optimize\/4/) // Properti
   // Going back to edit keeps the furthest saved percent instead of dropping it.
   await page.goto('/optimize/1/pekerjaan')
-  await expect(page.getByText('45% selesai.')).toBeAttached()
-  await page.goto('/optimize/3')
+  await expect(page.getByText('55% selesai.')).toBeAttached()
+  await page.goto('/optimize/4')
   await expect(page.getByText('Bagian 2 dari 3 · Kondisi & Tujuan')).toBeVisible()
-  await page.getByRole('button', { name: 'Isi contoh data' }).click()
-  await save()
-  await expect(page).toHaveURL(/optimize\/4/) // Properti
   await expect(page.getByText('Kesehatan KPR kamu')).toBeVisible()
   await expect(page.getByText('Isi estimasi nilai')).toBeVisible()
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
@@ -103,6 +98,7 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await save()
   await expect(page).toHaveURL(/optimize\/5/) // Tujuan: last data step, runs the simulation
   await expect(page.getByRole('region', { name: 'Kondisi keuangan: Tanpa dana tambahan' })).toContainText('Biaya keluar bank lama')
+  await expect(page.getByRole('region', { name: 'Kondisi keuangan: Tanpa dana tambahan' })).not.toContainText('Dana kamu untuk biaya') // never asked, so not shown
   await expect(page.getByRole('region', { name: 'Kondisi keuangan: + Dana tambahan' })).toContainText('Top-up kotor maksimum')
   await page.getByRole('radio', { name: /Pindah KPR tanpa dana tambahan/ }).click()
   await page.getByRole('radio', { name: 'Cicilan bulanan lebih ringan' }).click()
@@ -122,6 +118,46 @@ test('cold-entry take over: 5 data steps (changed payment → official figures) 
   await page.goto('/')
   await expect(page.getByText('Take Over · Bagian 3 dari 3')).toBeVisible()
   await expect(page.getByText('Pilih Bank & Kirim')).toBeVisible()
+})
+
+test('a deleted Take Over draft keeps what was typed: starting again opens filled-in forms', async ({ page }) => {
+  await useScenario(page, 'fresh', '/')
+  const start = async () => {
+    await page.getByRole('button', { name: /^Take Over/ }).click()
+    await expect(page).toHaveURL(/optimize\/intro/)
+    await page.getByRole('button', { name: 'Mulai', exact: true }).click()
+    await expect(page).toHaveURL(/optimize\/1$/)
+  }
+  const save = () => page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
+  await start()
+  await page.getByRole('button', { name: 'Isi contoh data' }).click()
+  await save()
+  await expect(page).toHaveURL(/optimize\/1\/pekerjaan/)
+  await page.getByRole('button', { name: 'Isi contoh data' }).click()
+  await save()
+  await expect(page).toHaveURL(/optimize\/2$/)
+  await page.getByRole('button', { name: 'Isi contoh data' }).click()
+  await save()
+  await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toBeVisible()
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Batal & mulai produk lain' }).click()
+  await expect(page.getByText('Data yang sudah kamu isi tetap tersimpan')).toBeVisible()
+  await page.getByRole('button', { name: 'Ya, Hapus' }).click()
+  await expect(page.getByText('Draft dihapus.')).toBeVisible()
+
+  await start()
+  await expect(page.getByLabel('NIK')).not.toHaveValue('') // data pribadi, from the profile
+  await save()
+  await expect(page).toHaveURL(/optimize\/1\/pekerjaan/)
+  await expect(page.getByLabel('Penghasilan bulanan (gross)')).toHaveValue('15.000.000')
+  await expect(page.getByLabel('Cicilan kendaraan')).toHaveValue('1.000.000')
+  await save()
+  await expect(page).toHaveURL(/optimize\/2$/)
+  await expect(page.getByLabel('Bunga saat ini')).toHaveValue('10,50')
+  await expect(page.getByLabel('Sisa pokok saat ini')).toHaveValue('421.500.000')
+  await save()
+  await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toBeVisible()
 })
 
 test('top-up branch shows gross/net funds and LTV', async ({ page }) => {

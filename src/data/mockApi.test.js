@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { calculateMaxPrincipal } from '@/calculations/finance'
 import { selectHomeState } from '@/domains/home/selectHomeState'
+import { takeoverGaps } from '@/domains/optimize/validation'
 import { createMockApi, mockControls } from './mockApi'
 import { DEFAULT_REMINDERS, SCENARIOS, createSeed } from './seed'
 
@@ -155,14 +156,6 @@ describe('monitoring', () => {
     expect(saved.outstandingPrincipal).toBe(m.outstandingPrincipal)
   })
 
-  it('estimate API still refuses a changed payment (the Take Over wizard uses it)', async () => {
-    mockControls.reset('fresh')
-    await expectCode(api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: true }), 'OFFICIAL_OUTSTANDING_REQUIRED')
-    const est = await api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: false })
-    expect(est).toMatchObject({ effectiveRateBps: 550, paidMonths: 57, remainingMonths: 183, estimated: true })
-    expect(Math.abs(est.outstanding - 510_515_794)).toBeLessThan(5)
-  })
-
   it('profile finance edits reach the active mortgage (KPR Health reads that copy)', async () => {
     mockControls.reset('mortgage_active_normal')
     await api.profile.update({ finance: { monthlyIncome: 20_000_000, vehicleDebt: 1_000_000 } })
@@ -199,6 +192,51 @@ describe('take over simulation', () => {
     const app = await api.simulations.apply({ bankProductId: sim.items[0].productId, tenorMonths: 180 })
     expect(app).toMatchObject({ productType: 'takeover', status: 'draft', currentStep: 6, mortgageId: m.id })
     expect((await api.dashboard.getSnapshot()).applications).toHaveLength(1)
+  })
+
+  it('a draft from a monitored KPR submits only once its forms pass; non-pricing data keeps the program', async () => {
+    const applyFirst = async () => {
+      mockControls.reset('mortgage_active_floating')
+      const [m] = (await api.dashboard.getSnapshot()).mortgages
+      const sim = await api.simulations.run({ source: { type: 'mortgage', id: m.id }, input: { mode: 'takeover', goal: 'lower_payment', tenorMonths: 180 } })
+      return api.simulations.apply({ bankProductId: sim.items[0].productId, tenorMonths: 180 })
+    }
+    let app = await applyFirst()
+    for (const d of app.requiredDocuments.filter((x) => x.required)) await api.applications.uploadDocument(app.id, { documentType: d.type, file: file(`${d.type}.jpg`) })
+    const consents = { dataAccuracy: true, sendToBank: true }
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { companyName: '' } } })
+    await expectCode(api.applications.submit(app.id, { consents }), 'VALIDATION_FAILED') // Pekerjaan no longer passes its form
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { companyName: 'PT Lain', jobTitle: 'Manager' } } })
+    expect(app.selection).not.toBeNull()
+    expect((await api.applications.submit(app.id, { consents })).status).toBe('submitted')
+
+    app = await applyFirst()
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { monthlyIncome: app.data.employment.monthlyIncome + 1_000_000 } } })
+    expect(app.selection).toBeNull() // income prices the program
+  })
+
+  it('a cancelled Take Over keeps what was typed, so the next draft starts filled in', async () => {
+    mockControls.reset('fresh')
+    let app = await api.applications.create({ productType: 'takeover', mode: 'takeover' })
+    const oldLoan = { bankName: 'Bank ABC', originalPrincipal: 500_000_000, currentPayment: 5_000_000, rateBps: 1050, rateType: 'floating', outstanding: 421_500_000, remainingMonths: 181, source: 'official' }
+    const property = { propertyType: 'landed_house', city: 'Kota Bekasi', estimatedValue: 850_000_000 }
+    const finance = { vehicleDebt: 1_000_000, cardDebt: 0, otherDebt: 0 }
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { monthlyIncome: 15_000_000 } } })
+    app = await api.applications.saveStep(app.id, { step: 2, values: { oldLoan, property, finance } })
+    await api.applications.cancel(app.id)
+
+    const next = await api.applications.create({ productType: 'takeover', mode: 'takeover' })
+    expect(next.id).not.toBe(app.id)
+    expect(next.data).toMatchObject({ oldLoan, property, finance, employment: { monthlyIncome: 15_000_000 } }) // gaji via the profile
+    expect(next).toMatchObject({ currentStep: 1, documents: {} })
+  })
+
+  it('a draft created from a monitored KPR is prefilled and opens on Tujuan with only the missing forms left', async () => {
+    mockControls.reset('mortgage_active_floating')
+    const { mortgages: [m], clock } = await api.dashboard.getSnapshot()
+    const app = await api.applications.create({ productType: 'takeover', mode: 'takeover', mortgageId: m.id })
+    expect(app).toMatchObject({ source: 'mortgage', mortgageId: m.id, currentStep: 5, selection: null, data: { oldLoan: { bankName: m.bankName, outstanding: m.outstandingPrincipal } } })
+    expect(takeoverGaps(app.data, { today: clock, mode: 'takeover' })).toEqual([]) // nothing left to ask
   })
 })
 
