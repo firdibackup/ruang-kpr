@@ -33,6 +33,7 @@ import {
   GRID_MIN_WIDTH,
   MAX_H,
   ROW_HEIGHT,
+  UNLOCKED_LAYOUT,
   WIDGET,
   addWidget,
   contentZoom,
@@ -44,6 +45,7 @@ import {
 } from "./dashboardLayout";
 import { WidgetGallery } from "./WidgetGallery";
 import { WidgetBody } from "./widgets/WidgetBody";
+import { widgetLock } from "./widgets/widgetData";
 
 const GRID = {
   cols: COLS,
@@ -77,9 +79,17 @@ export function WidgetBoard({
   const { width, containerRef, mounted } = useContainerWidth({
     measureBeforeMount: true,
   });
-  const layout = (editing && draft) || saved;
+  // Never customised (saved is null), the board follows the default for the user's data: Peluang and Health
+  // lead once both unlock. Saving the default stores null again, so a reset keeps following the data.
+  const fallback = ["opportunity", "health"].some((id) =>
+    widgetLock(id, widgetProps.m, widgetProps.d),
+  )
+    ? DEFAULT_LAYOUT
+    : UNLOCKED_LAYOUT;
+  const current = saved ?? fallback;
+  const layout = (editing && draft) || current;
   const grid = width >= GRID_MIN_WIDTH;
-  const dirty = editing && !sameLayout(layout, saved);
+  const dirty = editing && !sameLayout(layout, current);
 
   const edit = (next, message) => {
     setDraft(next);
@@ -94,7 +104,11 @@ export function WidgetBoard({
     if (!dirty) return close();
     setSaving(true);
     try {
-      setSaved(await api.dashboard.saveLayout(draft));
+      setSaved(
+        await api.dashboard.saveLayout(
+          sameLayout(draft, fallback) ? null : draft,
+        ),
+      );
       close();
       onSaved();
       toast.success("Susunan dashboard disimpan.");
@@ -144,10 +158,8 @@ export function WidgetBoard({
               variant="ghost"
               size="sm"
               className="max-sm:px-3"
-              disabled={sameLayout(layout, DEFAULT_LAYOUT)}
-              onClick={() =>
-                edit(DEFAULT_LAYOUT, "Susunan dikembalikan ke default.")
-              }
+              disabled={sameLayout(layout, fallback)}
+              onClick={() => edit(fallback, "Susunan dikembalikan ke default.")}
             >
               <RotateCcwIcon aria-hidden />
               {/* One flex item, so the button gap doesn't split the label. */}
@@ -197,7 +209,7 @@ export function WidgetBoard({
               onLayoutChange={(next) =>
                 editing &&
                 setDraft((cur) =>
-                  sameLayout(cur ?? saved, next) ? cur : next.map(pick),
+                  sameLayout(cur ?? current, next) ? cur : next.map(pick),
                 )
               }
             >

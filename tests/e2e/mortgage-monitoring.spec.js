@@ -89,6 +89,9 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
     const body = page.getByRole('group', { name, exact: true }).locator(':scope > div:first-child > *')
     expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight), name).toBeLessThanOrEqual(1) // fits its default cell
   }
+  // Locked cards wait below the KPR itself on the default board.
+  const top = async (name) => (await page.getByRole('group', { name, exact: true }).boundingBox()).y
+  expect(await top('KPR Saya')).toBeLessThan(await top('Peluang KPR'))
   await expect(page.getByRole('link', { name: 'Lihat penyebab' })).toHaveCount(0)
   await fillIncome(page)
   await expect(page.getByRole('img', { name: /KPR Health \d+ dari 100/ })).toBeVisible()
@@ -105,6 +108,8 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   await expect(property).toBeHidden()
   await expect(page.getByRole('link', { name: /POTENSI REFINANCING/ })).toBeVisible() // the real tile, not the locked example
   await expect(page.getByRole('button', { name: 'Eksplorasi Pilihan' })).toBeVisible()
+  // Every field filled: the default board now leads with Peluang and Health, without a reload.
+  await expect.poll(async () => (await top('Peluang KPR')) < (await top('KPR Saya')) && (await top('KPR Health')) < (await top('KPR Saya'))).toBe(true)
   await expect(page.locator('main canvas, main .recharts-surface')).toHaveCount(0) // default board has no charts; they are opt-in widgets (PRD §11.1)
   await expect(page.getByRole('table', { name: /Cicilan berikutnya/ }).getByRole('row')).toHaveCount(4) // header + 3 cicilan
   await expect(page.getByRole('link', { name: 'Lihat jadwal amortisasi' })).toHaveAttribute('href', '/my-kpr/amortization')

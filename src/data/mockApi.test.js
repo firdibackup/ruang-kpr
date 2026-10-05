@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { calculateMaxPrincipal } from '@/calculations/finance'
-import { DEFAULT_LAYOUT } from '@/domains/home/dashboardLayout'
 import { selectHomeState } from '@/domains/home/selectHomeState'
 import { takeoverGaps } from '@/domains/optimize/validation'
 import { createMockApi, mockControls } from './mockApi'
@@ -195,14 +194,14 @@ describe('monitoring', () => {
 })
 
 describe('dashboard layout', () => {
-  it('starts from the default board; saves a validated layout; null restores the default', async () => {
+  it('is null until customised (the board picks the default for the data); saves a validated layout; null restores it', async () => {
     mockControls.reset('mortgage_active_normal')
-    expect((await api.dashboard.getSnapshot()).dashboardLayout).toEqual(DEFAULT_LAYOUT)
+    expect((await api.dashboard.getSnapshot()).dashboardLayout).toBeNull()
     await expectCode(api.dashboard.saveLayout('rusak'), 'VALIDATION_FAILED')
     const saved = await api.dashboard.saveLayout([{ i: 'outstanding', x: 0, y: 3, w: 99, h: 4 }, { i: 'chart', x: 0, y: 0, w: 4, h: 4 }])
     expect(saved).toEqual([{ i: 'outstanding', x: 0, y: 0, w: 12, h: 4 }])
     expect((await api.dashboard.getSnapshot()).dashboardLayout).toEqual(saved)
-    expect(await api.dashboard.saveLayout(null)).toEqual(DEFAULT_LAYOUT)
+    expect(await api.dashboard.saveLayout(null)).toBeNull()
   })
 })
 

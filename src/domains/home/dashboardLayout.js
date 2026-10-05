@@ -46,13 +46,23 @@ export const WIDGETS = [
 ]
 export const WIDGET = Object.fromEntries(WIDGETS.map((w) => [w.id, w]))
 
-// The KPR itself comes first: KPR Saya → Peluang on the left, Pembayaran → Amortisasi → Health → Agenda on the right.
+// The board a user who never customised it sees (WidgetBoard picks one by data). While Peluang or Health is
+// locked, the KPR itself comes first: KPR Saya → Peluang on the left, Pembayaran → Amortisasi → Health → Agenda.
 export const DEFAULT_LAYOUT = [
   { i: 'myKpr', x: 0, y: 0, w: 7, h: 12 },
   { i: 'nextPayment', x: 7, y: 0, w: 5, h: 5 },
   { i: 'amortization', x: 7, y: 5, w: 5, h: 8 },
   { i: 'opportunity', x: 0, y: 12, w: 7, h: 12 },
   { i: 'health', x: 7, y: 13, w: 5, h: 5 },
+  { i: 'agenda', x: 7, y: 18, w: 5, h: 6 },
+]
+// Once both unlock they lead: Peluang → KPR Saya on the left, Pembayaran → Health → Amortisasi → Agenda.
+export const UNLOCKED_LAYOUT = [
+  { i: 'opportunity', x: 0, y: 0, w: 7, h: 11 },
+  { i: 'nextPayment', x: 7, y: 0, w: 5, h: 5 },
+  { i: 'health', x: 7, y: 5, w: 5, h: 5 },
+  { i: 'amortization', x: 7, y: 10, w: 5, h: 8 },
+  { i: 'myKpr', x: 0, y: 11, w: 7, h: 12 },
   { i: 'agenda', x: 7, y: 18, w: 5, h: 6 },
 ]
 

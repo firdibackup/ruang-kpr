@@ -70,6 +70,9 @@ function pushActivity(db, { type, category, title, body, action = null }) {
   db.activities.unshift({ id: nextId(db, 'act'), type, category, title, body, occurredAt: nowIso(db), readAt: null, action })
 }
 
+// null until the user customises the Home board; until then the board follows the default for their data.
+const savedLayout = (db) => (Array.isArray(db.dashboardLayout) ? normalizeLayout(db.dashboardLayout) : null)
+
 function decorate(app) {
   app.requiredDocuments = requiredDocuments(app)
   return app
@@ -463,14 +466,14 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         mortgages: db.mortgages,
         simulation: db.simulation,
         unreadActivities: db.activities.filter((a) => !a.readAt).length,
-        dashboardLayout: normalizeLayout(db.dashboardLayout),
+        dashboardLayout: savedLayout(db),
       })),
       // null restores the default board; a missing field means the user never customised it.
       saveLayout: call('dashboard.saveLayout', (db, layout) => {
         if (layout !== null && !Array.isArray(layout)) fail('VALIDATION_FAILED', 'Susunan dashboard tidak valid.', 400)
         if (layout === null) delete db.dashboardLayout
         else db.dashboardLayout = normalizeLayout(layout)
-        return normalizeLayout(db.dashboardLayout)
+        return savedLayout(db)
       }),
     },
 

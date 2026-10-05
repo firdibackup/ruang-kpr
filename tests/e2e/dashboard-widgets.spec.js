@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { useScenario } from './helpers'
 
-const DEFAULT = ['KPR Saya', 'Pembayaran Berikutnya', 'Jadwal Amortisasi', 'Peluang KPR', 'KPR Health', 'Agenda terdekat']
+// All data filled, so Peluang and Health are unlocked and lead the default board.
+const DEFAULT = ['Peluang KPR', 'Pembayaran Berikutnya', 'KPR Health', 'Jadwal Amortisasi', 'KPR Saya', 'Agenda terdekat']
 const widget = (page, name) => page.getByRole('group', { name, exact: true })
 const width = async (locator) => (await locator.boundingBox()).width
 const fontSize = (locator) => locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
@@ -20,7 +21,7 @@ test('home widgets: default board fits; hide, add, resize by keyboard and drag; 
   await useScenario(page, 'mortgage_active_normal', '/')
   await expect(page.getByText('POTENSI REFINANCING')).toBeVisible() // Peluang finished loading
 
-  // The default board opens on KPR Saya, Pembayaran and Amortisasi, and every widget fits its cell without scrolling.
+  // Every widget on the default board fits its cell without scrolling.
   for (const name of DEFAULT) {
     const body = widget(page, name).locator(':scope > div:first-child > *')
     expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight), name).toBeLessThanOrEqual(1)
@@ -43,8 +44,8 @@ test('home widgets: default board fits; hide, add, resize by keyboard and drag; 
   await picker.getByRole('button', { name: 'Tambah Sisa Pokok' }).click()
   await expect(picker).toBeHidden()
   const tile = widget(page, 'Sisa Pokok')
-  // It fills the gap Agenda left under KPR Health instead of growing the board.
-  expect((await tile.boundingBox()).x).toBeCloseTo((await widget(page, 'KPR Health').boundingBox()).x, 0)
+  // It fills the gap Agenda left under Jadwal Amortisasi instead of growing the board.
+  expect((await tile.boundingBox()).x).toBeCloseTo((await widget(page, 'Jadwal Amortisasi').boundingBox()).x, 0)
   const start = await width(tile)
 
   // Keyboard: the ⋯ menu widens the widget by one column (here up to the grid's right edge).

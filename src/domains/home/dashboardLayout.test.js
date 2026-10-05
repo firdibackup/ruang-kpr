@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATEGORIES, COLS, DEFAULT_LAYOUT, MAX_H, WIDGET, WIDGETS, addWidget, moveWidget, normalizeLayout, readingOrder, removeWidget, resizeWidget, sameLayout } from './dashboardLayout'
+import { CATEGORIES, COLS, DEFAULT_LAYOUT, MAX_H, UNLOCKED_LAYOUT, WIDGET, WIDGETS, addWidget, moveWidget, normalizeLayout, readingOrder, removeWidget, resizeWidget, sameLayout } from './dashboardLayout'
 import { WIDGET_VIEWS } from './widgets'
 
 const at = (layout, id) => layout.find((l) => l.i === id)
@@ -33,6 +33,12 @@ describe('normalizeLayout', () => {
 
   it('puts KPR Saya, Pembayaran and Amortisasi first in the default reading order', () => {
     expect(ids(DEFAULT_LAYOUT)).toEqual(['myKpr', 'nextPayment', 'amortization', 'opportunity', 'health', 'agenda'])
+  })
+
+  it('leads with Peluang and Health once they unlock, on an already compact board', () => {
+    expect(ids(UNLOCKED_LAYOUT)).toEqual(['opportunity', 'nextPayment', 'health', 'amortization', 'myKpr', 'agenda'])
+    expect(sameLayout(normalizeLayout(UNLOCKED_LAYOUT), UNLOCKED_LAYOUT)).toBe(true)
+    expect(at(UNLOCKED_LAYOUT, 'opportunity').h).toBe(WIDGET.opportunity.h - 1) // unlocked, its content ends a row early
   })
 })
 

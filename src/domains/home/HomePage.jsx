@@ -123,7 +123,7 @@ export function HomePage() {
           active &&
           !app &&
           !arranging &&
-          snap.dashboardLayout.length > 0 && (
+          snap.dashboardLayout?.length !== 0 && (
             <Button
               variant="neutral"
               size="sm"
