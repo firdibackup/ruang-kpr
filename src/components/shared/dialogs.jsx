@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { AlertDialog as AlertDialogPrimitive, Dialog as DialogPrimitive } from 'radix-ui'
-import { Trash2Icon, XIcon } from 'lucide-react'
+import { CircleCheckIcon, Trash2Icon, XIcon } from 'lucide-react'
+import confetti from 'canvas-confetti'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Spinner } from './ui'
@@ -79,6 +80,40 @@ export function FormDialog({ open, onOpenChange, title, description, children, c
             </DialogPrimitive.Close>
           </div>
           {children}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  )
+}
+
+// Celebration pop-up after a flow completes; fires confetti once on mount (skipped for reduced motion).
+export function SuccessDialog({ title, body, children, onClose }) {
+  useEffect(() => {
+    const burst = (x, angle) => confetti({ particleCount: 140, spread: 75, startVelocity: 60, angle, origin: { x, y: 0.75 }, disableForReducedMotion: true })
+    burst(0, 60)
+    burst(1, 120)
+    const t = setTimeout(() => confetti({ particleCount: 160, spread: 120, origin: { y: 0.4 }, disableForReducedMotion: true }), 350)
+    return () => {
+      clearTimeout(t)
+      confetti.reset()
+    }
+  }, [])
+  return (
+    <DialogPrimitive.Root open onOpenChange={(v) => !v && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className={overlay} />
+        <DialogPrimitive.Content className={cn(content, 'max-w-[440px] items-center text-center')}>
+          <span className="flex size-[72px] items-center justify-center rounded-full bg-success-bg text-success-strong" aria-hidden>
+            <CircleCheckIcon className="size-9" />
+          </span>
+          <div className="flex flex-col gap-2">
+            <DialogPrimitive.Title className="text-2xl font-extrabold">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Description className="text-[15px] leading-[22px] text-ink-3">{body}</DialogPrimitive.Description>
+          </div>
+          {children}
+          <DialogPrimitive.Close asChild>
+            <Button className="mt-1 w-full">Lihat Dashboard</Button>
+          </DialogPrimitive.Close>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

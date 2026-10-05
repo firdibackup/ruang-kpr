@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { CheckIcon, CircleCheckIcon, ClockIcon, FileXIcon, ShieldCheckIcon } from 'lucide-react'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { CheckIcon, ClockIcon, FileXIcon, ShieldCheckIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { useResource } from '@/lib/hooks'
 import { Button } from '@/components/ui/button'
@@ -47,7 +47,7 @@ export function MonitoringIntro() {
               </li>
             ))}
           </ul>
-          <p className="text-[13px] leading-5 text-ink-3">3 langkah: data KPR, data pendukung (opsional, bisa dilewati), lalu reminder.</p>
+          <p className="text-[13px] leading-5 text-ink-3">2 langkah: data KPR lalu reminder. Penghasilan dan data properti bisa dilengkapi nanti.</p>
           {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Button onClick={start} disabled={pending} aria-busy={pending}>
@@ -62,7 +62,7 @@ export function MonitoringIntro() {
         <div className="flex flex-col gap-3.5 self-start rounded-3xl bg-muted p-6">
           {[
             [ShieldCheckIcon, 'Data yang kamu masukkan tidak akan dikirim ke bank sampai kamu memilih “Ajukan Sekarang”.'],
-            [ClockIcon, 'Estimasi waktu isi: 5–8 menit'],
+            [ClockIcon, 'Estimasi waktu isi: 3–5 menit'],
             [FileXIcon, 'Tidak perlu upload dokumen'],
           ].map(([Icon, text]) => (
             <div key={text} className="flex items-start gap-3">
@@ -73,25 +73,6 @@ export function MonitoringIntro() {
         </div>
       </section>
     </>
-  )
-}
-
-export function MonitoringSuccess() {
-  const { state } = useLocation()
-  return (
-    <section className="flex flex-col items-center gap-4 rounded-card bg-card px-8 py-16 text-center shadow-card">
-      <span className="flex size-[72px] items-center justify-center rounded-full bg-success-bg text-success-strong" aria-hidden>
-        <CircleCheckIcon className="size-9" />
-      </span>
-      <h1 className="text-[28px] font-extrabold">Pemantauan KPR aktif</h1>
-      <p className="text-[15px] text-ink-3">{state?.scheduled ? `Reminder pertama sudah dijadwalkan (${state.scheduled} pengingat terjadwal).` : 'Data KPR kamu tersimpan. Atur reminder kapan saja di Profil.'}</p>
-      <p className="text-xs text-muted-foreground">Tidak ada pengajuan yang dibuat dan tidak ada data yang dikirim ke bank.</p>
-      <Button asChild className="mt-2">
-        <Link to="/" replace>
-          Lihat Dashboard
-        </Link>
-      </Button>
-    </section>
   )
 }
 

@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckIcon, ClockIcon, CloudCheckIcon, HandCoinsIcon, RepeatIcon, ShieldCheckIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { Button } from '@/components/ui/button'
 import { HouseIllustration } from '@/components/shared/HouseIllustration'
 import { Chip, ErrorPanel, Notice, PageSkeleton, Spinner } from '@/components/shared/ui'
 import { productName, resumePath } from '@/domains/applications/meta'
-import { SubmitSuccess } from '@/domains/applications/PrimarySuccess'
 import { OptimizeHeader, useOptimize } from './shared'
 
 export function OptimizeIntro() {
@@ -111,21 +110,5 @@ export function OptimizeIntro() {
         </div>
       </div>
     </>
-  )
-}
-
-export function OptimizeSuccess() {
-  const { state } = useLocation()
-  const { snap, error, reload } = useOptimize()
-  if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
-  const app = snap.applications.find((a) => a.id === state?.id) ?? snap.applications.find((a) => a.productType === 'takeover' && a.status === 'submitted')
-  if (!app) return <Navigate to="/my-kpr" replace />
-  return (
-    <div className="flex flex-col gap-4">
-      <SubmitSuccess app={app} />
-      <Notice tone="warn" className="mx-auto w-full max-w-[640px]">
-        Tetap bayar cicilan bank lama sampai konfirmasi pelunasan resmi diterima.
-      </Notice>
-    </div>
   )
 }

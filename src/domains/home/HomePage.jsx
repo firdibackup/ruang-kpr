@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowRightIcon,
@@ -25,7 +25,11 @@ import { useResource } from "@/lib/hooks";
 import { dateShort, firstName, rupiah, tenorLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/AppShell";
-import { ConfirmDialog, FormDialog } from "@/components/shared/dialogs";
+import {
+  ConfirmDialog,
+  FormDialog,
+  SuccessDialog,
+} from "@/components/shared/dialogs";
 import { StatusStepper } from "@/components/shared/progress";
 import {
   Chip,
@@ -67,7 +71,7 @@ const greeting = () => {
 };
 
 const SUBTITLE = {
-  fresh: "Siap ajukan KPR pertamamu?",
+  fresh: "Pantau KPR yang sudah berjalan, atau ajukan KPR baru.",
   application_draft: "Pengajuan kamu tersimpan. Lanjutkan kapan saja.",
   application_in_process: "Ini kabar pengajuan KPR kamu hari ini.",
   application_rejected: "Ada kabar dari bank soal pengajuan kamu.",
@@ -83,6 +87,8 @@ const ARTICLE_ICONS = {
 };
 
 export function HomePage() {
+  const { state: navState } = useLocation();
+  const navigate = useNavigate();
   const {
     data: snap,
     error,
@@ -133,7 +139,12 @@ export function HomePage() {
       {home.state === "mortgage_setup_draft" && (
         <MortgageDraftHero mortgage={home.mortgage} onDeleted={reload} />
       )}
-      {home.state === "fresh" && <FreshProducts />}
+      {home.state === "fresh" && (
+        <>
+          <MonitoringEntry />
+          <FreshProducts />
+        </>
+      )}
 
       {active && (app || home.state === "mortgage_setup_draft") ? (
         <ActiveMortgageMini
@@ -151,10 +162,52 @@ export function HomePage() {
         />
       )}
 
-      {home.state === "fresh" && <MonitoringEntry />}
       {!active && home.state !== "application_in_process" && <HowItWorks />}
       {!active && <Insights />}
+
+      {navState?.success && (
+        <FlowSuccess
+          success={navState.success}
+          applications={snap.applications}
+          onClose={() => navigate(".", { replace: true, state: null })}
+        />
+      )}
     </>
+  );
+}
+
+// Shown once after a wizard finishes (wizards navigate to "/" with `state.success`).
+function FlowSuccess({ success, applications, onClose }) {
+  if (success.appId) {
+    const app = applications.find((a) => a.id === success.appId);
+    if (!app) return null;
+    return (
+      <SuccessDialog
+        title="Pengajuan berhasil dikirim"
+        body={
+          <>
+            {productName(app)} ke {app.selection.bankName}. Tahap berikutnya:{" "}
+            <b>verifikasi dokumen</b>. Kami kabari lewat Activity dan email.
+          </>
+        }
+        onClose={onClose}
+      />
+    );
+  }
+  return (
+    <SuccessDialog
+      title="Pemantauan KPR aktif"
+      body={
+        success.scheduled
+          ? `Reminder pertama sudah dijadwalkan (${success.scheduled} pengingat terjadwal).`
+          : "Data KPR kamu tersimpan. Atur reminder kapan saja di Profil."
+      }
+      onClose={onClose}
+    >
+      <p className="text-xs text-muted-foreground">
+        Tidak ada pengajuan yang dibuat dan tidak ada data yang dikirim ke bank.
+      </p>
+    </SuccessDialog>
   );
 }
 
@@ -251,8 +304,10 @@ function FreshProducts() {
 
 function MonitoringEntry() {
   return (
-    // Second entry point after the product hero: a primary-tinted surface so it reads as an offer, not a footnote.
-    <section className="flex flex-wrap items-center gap-x-5 gap-y-4 rounded-card border border-primary/20 bg-[linear-gradient(100deg,#dbe6f8_0%,var(--secondary)_50%,#f3f7fe_100%)] p-5 shadow-card sm:px-7 sm:py-6">
+    // Sits above the product hero so existing-KPR owners see their path first; compact on mobile so the hero stays near the fold.
+    // Brand red deepening to burgundy with a soft top-right sheen: a highlight, not an error panel (those use danger-bg).
+    // Brightest stop stays at brand red so white body text keeps ≥4.5:1 everywhere.
+    <section className="flex flex-wrap items-center gap-x-4 gap-y-4 rounded-card bg-[radial-gradient(60%_140%_at_88%_-25%,#ffffff26,transparent_70%),linear-gradient(120deg,#dc1c2e_0%,#b3141f_48%,#7a0d1c_100%)] p-5 text-white shadow-[0_14px_36px_-14px_#7a0d1c99] ring-1 ring-white/10 ring-inset sm:gap-x-5 sm:px-7 sm:py-6">
       {/* Illustration carries ~18% transparent padding; the negative margin keeps the visible tile at the old icon footprint. */}
       <img
         src="/card-kpr.webp"
@@ -260,18 +315,24 @@ function MonitoringEntry() {
         width={800}
         height={800}
         decoding="async"
-        className="-m-3 size-32 shrink-0 self-start sm:self-center"
+        className="-m-2 size-20 shrink-0 sm:-m-3 sm:size-32"
       />
-      <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-1 basis-[180px] flex-col gap-1.5">
         <h2 className="text-lg leading-6 font-extrabold">
           Sudah punya KPR yang berjalan?
         </h2>
-        <p className="max-w-[62ch] text-sm leading-[21px] text-ink-3">
+        {/* Full white: translucent white drops under 4.5:1 on brand red. */}
+        <p className="max-w-[62ch] text-sm leading-[21px]">
           Pantau cicilan, dapatkan reminder sebelum bunga floating, dan lihat
           kondisi KPR kamu dalam satu tempat.
         </p>
       </div>
-      <Button asChild size="md" className="w-full sm:w-auto">
+      <Button
+        asChild
+        variant="inverse"
+        size="md"
+        className="w-full text-brand-red hover:bg-danger-bg focus-visible:ring-white/70 sm:w-auto"
+      >
         <Link to="/monitoring/intro">
           Pantau KPR Saya
           <ArrowRightIcon aria-hidden />
@@ -489,7 +550,7 @@ function MortgageDraftHero({ mortgage, onDeleted }) {
           Lanjutkan pengaturan KPR kamu
         </h2>
         <p className="text-[15px] font-semibold text-white/90">
-          Bagian {step} dari 3 · {SETUP_STEPS[step - 1]}
+          Bagian {step} dari {SETUP_STEPS.length} · {SETUP_STEPS[step - 1]}
         </p>
         <HeroProgress
           value={SETUP_PERCENT[step - 1]}

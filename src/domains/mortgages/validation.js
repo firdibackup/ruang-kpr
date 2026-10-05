@@ -1,12 +1,13 @@
 // Pure validators for the monitoring setup (doc 02 MON-01…MON-05). Values are form strings.
 import { countDueDatesBetween } from '@/calculations/dates'
-import { toBps, toInt, toMoney } from '@/lib/format'
+import { solveAnnualRateBps } from '@/calculations/finance'
+import { bpsInput, toBps, toInt, toMoney } from '@/lib/format'
 
 const minLen = (v, n) => String(v ?? '').trim().length >= n
 const blank = (v) => String(v ?? '').trim() === ''
 
-// Data pendukung (setup step 2) is optional: only `required` keys must be filled; any other field is checked
-// only once something is typed, so Simpan & Lanjutkan never blocks on what Lewati would leave empty.
+// Optional forms filled after activation (Data properti, the income pop-up on Home): only `required` keys must be
+// filled; any other field is checked only once something is typed, so saving never blocks on a field left empty.
 export const filledOnly = (errors, v, required = []) => Object.fromEntries(Object.entries(errors).filter(([k]) => required.includes(k) || !blank(v[k])))
 
 const rateError = (v, required = true) => {
@@ -23,6 +24,29 @@ export function remainingFromStart(v, today) {
   const due = toInt(v.dueDay)
   if (!(tenor > 0) || !v.startDate || v.startDate > today || !(due >= 1 && due <= 31)) return null
   return tenor - countDueDatesBetween({ startDate: v.startDate, today, dueDay: due })
+}
+
+// Bunga solved from pinjaman awal, cicilan and tenor awal, as a form string ('' when it can't be). Only true while
+// cicilan never changed since akad (PRD 15.2), so never for floating.
+export function impliedRate(v, rateType) {
+  const principal = toMoney(v.originalPrincipal)
+  const payment = toMoney(v.currentPayment)
+  const termMonths = toInt(v.originalTenorMonths)
+  if (rateType === 'floating' || !(principal > 0) || !(payment > 0) || !(termMonths >= 12 && termMonths <= 360)) return ''
+  try {
+    const { annualRateBps } = solveAnnualRateBps({ principal, payment, termMonths, maxAnnualRateBps: 3000 })
+    return annualRateBps > 0 ? bpsInput(annualRateBps) : ''
+  } catch {
+    return ''
+  }
+}
+
+export const RATE_AUTO_HINT = 'Dihitung otomatis dari pinjaman awal, cicilan, dan tenor awal. Ubah jika berbeda dengan surat akad.'
+
+// A field impliedRate reads changed (prev → next): an empty or still auto-filled bunga follows; a typed one is kept.
+export function withImpliedRate(prev, next, rateKey, typeKey) {
+  const auto = prev[rateKey] === '' || prev[rateKey] === impliedRate(prev, prev[typeKey])
+  return auto ? { ...next, [rateKey]: impliedRate(next, next[typeKey]) } : next
 }
 
 // Setup step 1: everything reminders and amortization need. rateStatus: 'fixed' | 'floating'.

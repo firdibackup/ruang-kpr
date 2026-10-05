@@ -11,9 +11,9 @@ import {
   ClockIcon,
   HouseIcon,
   LandmarkIcon,
+  LockIcon,
   PercentIcon,
   RefreshCwIcon,
-  SparklesIcon,
   TriangleAlertIcon,
   WalletIcon,
 } from "lucide-react";
@@ -36,7 +36,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { FormDialog } from "@/components/shared/dialogs";
-import { MarkPaidDialog } from "@/domains/mortgages/MyKprTabs";
+import { MarkPaidDialog, PropertyDialog } from "@/domains/mortgages/MyKprTabs";
+import { IncomeDialog } from "@/domains/profile/ProfilePages";
 import {
   Chip,
   Disclaimer,
@@ -97,6 +98,17 @@ export function MonitoringDashboard({
   );
   const [repricing, setRepricing] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [askIncome, setAskIncome] = useState(false);
+  const [askProperty, setAskProperty] = useState(false);
+  // Monitoring needs only the KPR data; Health unlocks with penghasilan, Peluang also needs the property value.
+  const healthLocked = !(d.income > 0);
+  const oppLocked = healthLocked || d.partialProperty;
+  const oppMissing = [
+    healthLocked && "penghasilan",
+    d.partialProperty && "nilai properti",
+  ]
+    .filter(Boolean)
+    .join(" dan ");
   const fi = d.floatingImpact;
   const weakest = [...d.health.components]
     .filter((c) => c.score !== null)
@@ -266,13 +278,20 @@ export function MonitoringDashboard({
         aria-labelledby="opp-title"
       >
         <div className="flex flex-col gap-4">
-          <IconBox icon={SparklesIcon} tone="white" size="lg" />
+          <img
+            src="/sparkles.webp"
+            alt=""
+            width={44}
+            height={44}
+            decoding="async"
+            className="size-11 shrink-0 rounded-lg object-cover"
+          />
           <div className="flex flex-col gap-1.5">
             <h2
               id="opp-title"
               className="text-xl leading-[27px] font-extrabold text-pretty"
             >
-              {opp?.cheaperProgramCount
+              {!oppLocked && opp?.cheaperProgramCount
                 ? "Ada ruang untuk cicilan lebih ringan."
                 : "Pantau peluang untuk KPR kamu."}
             </h2>
@@ -282,7 +301,26 @@ export function MonitoringDashboard({
             </p>
           </div>
         </div>
-        {exploreLoading && !explore ? (
+        {oppLocked ? (
+          <div className="flex flex-col items-start gap-3 rounded-xl bg-card px-4 py-3.5 md:row-span-2">
+            <span className="flex items-center gap-2 text-xs font-extrabold tracking-[0.4px] text-primary">
+              <LockIcon className="size-4" aria-hidden />
+              POTENSI TAKE OVER & REFINANCING
+            </span>
+            <p className="text-sm leading-[21px] text-ink-2">
+              Lengkapi {oppMissing} untuk melihat potensi cicilan lebih ringan
+              dan dana cair dari KPR kamu.
+            </p>
+            <Button
+              size="sm"
+              onClick={() =>
+                healthLocked ? setAskIncome(true) : setAskProperty(true)
+              }
+            >
+              {healthLocked ? "Isi Penghasilan" : "Isi Nilai Properti"}
+            </Button>
+          </div>
+        ) : exploreLoading && !explore ? (
           <div className="flex flex-col gap-2 md:row-span-2" aria-busy="true">
             <Skeleton className="h-24 rounded-xl" />
             <Skeleton className="h-24 rounded-xl" />
@@ -329,15 +367,17 @@ export function MonitoringDashboard({
             />
           </div>
         )}
-        <div className="flex flex-col gap-3 md:self-end">
-          <Button
-            className="w-full md:w-fit"
-            onClick={() => navigate("/explore")}
-          >
-            Eksplorasi Pilihan
-            <ArrowRightIcon aria-hidden />
-          </Button>
-        </div>
+        {!oppLocked && (
+          <div className="flex flex-col gap-3 md:self-end">
+            <Button
+              className="w-full md:w-fit"
+              onClick={() => navigate("/explore")}
+            >
+              Eksplorasi Pilihan
+              <ArrowRightIcon aria-hidden />
+            </Button>
+          </div>
+        )}
       </section>
 
       {isFloating && (
@@ -380,51 +420,27 @@ export function MonitoringDashboard({
         </HeroCard>
       )}
 
-      {d.partialProperty && (
-        <section className="flex flex-wrap items-center gap-[18px] rounded-3xl border border-warning-border bg-warning-soft px-6 py-[22px]">
-          <IconBox
-            icon={HouseIcon}
-            tone="white"
-            size="lg"
-            className="text-warning-text"
-          />
-          <div className="flex min-w-[240px] flex-1 flex-col gap-1">
-            <h2 className="text-[15px] font-extrabold">
-              Lengkapi nilai properti
-            </h2>
-            <p className="text-[13px] leading-[19px] text-[#5c4a1f]">
-              Equity, LTV, Refinancing + Top-up, dan Multiguna belum dapat
-              dihitung lengkap. Reminder pembayaran dan fixed tetap aktif.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/my-kpr/property?edit=1")}
-          >
-            Lengkapi Data Properti
-          </Button>
-        </section>
-      )}
-
       {/* Health → Next Payment → Amortisasi → KPR → Agenda on one column; two columns on desktop. */}
       <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:items-start">
         <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
-          {d.health.score == null ? (
+          {healthLocked ? (
             <Panel className="order-1 xl:order-none">
-              <span className="text-[13px] font-extrabold text-ink-3">
+              <span className="flex items-center gap-2 text-[13px] font-extrabold text-ink-3">
+                <LockIcon className="size-4" aria-hidden />
                 KPR Health
               </span>
               <p className="text-sm leading-[21px] text-ink-2">
-                Lengkapi data untuk melihat KPR Health.
+                Isi penghasilan bulanan untuk membuka KPR Health dan melihat
+                rasio beban cicilan kamu.
               </p>
-              <Link
-                to="/my-kpr/health"
-                className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary"
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => setAskIncome(true)}
               >
-                Lihat yang perlu dilengkapi
-                <ArrowRightIcon className="size-[15px]" aria-hidden />
-              </Link>
+                Isi Penghasilan
+              </Button>
             </Panel>
           ) : (
             <Panel className="order-1 flex-row items-center gap-6 xl:order-none">
@@ -715,6 +731,29 @@ export function MonitoringDashboard({
           </Panel>
         </div>
       </div>
+
+      {askIncome && (
+        <IncomeDialog
+          finance={m.finance}
+          onClose={() => setAskIncome(false)}
+          onSaved={() => {
+            setAskIncome(false);
+            onChanged();
+          }}
+        />
+      )}
+
+      {askProperty && (
+        <PropertyDialog
+          m={m}
+          clock={clock}
+          onClose={() => setAskProperty(false)}
+          onSaved={() => {
+            setAskProperty(false);
+            onChanged();
+          }}
+        />
+      )}
 
       {marking && (
         <MarkPaidDialog

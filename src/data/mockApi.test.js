@@ -99,14 +99,14 @@ describe('monitoring', () => {
   const step1 = { bankName: 'Bank ABC', scheme: 'conventional', originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22 }
   const fixedRate = { currentRateType: 'fixed', fixedUntil: '2026-12-22', currentRateBps: 550, remainingTenorMonths: 183, estimatedFloatingRateBps: 900, outstandingPrincipal: null, outstandingEstimated: null }
 
-  it('step 1 KPR data activates with Data pendukung skipped; sisa pokok is estimated when not known', async () => {
+  it('step 1 KPR data is all activation needs; sisa pokok is estimated when not known', async () => {
     mockControls.reset('fresh')
     const m = await api.mortgages.createSetup()
     const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { ...step1, ...fixedRate } })
     expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 550, termMonths: 183 }))
     expect(saved.outstandingEstimated).toBe(true)
-    expect((await api.mortgages.saveSetupStep(m.id, { step: 2, values: {} })).setupStep).toBe(3) // Lewati semua
-    await api.mortgages.saveSetupStep(m.id, { step: 3, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
+    expect(saved.setupStep).toBe(2) // straight to Reminder
+    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
     const r = await api.mortgages.activate(m.id, { confirmDataCorrect: true })
     expect(r.applicationCreated).toBe(false)
     const snap = await api.dashboard.getSnapshot()
@@ -134,19 +134,12 @@ describe('monitoring', () => {
     expect(saved).toMatchObject({ fixedUntil: null, estimatedFloatingRateBps: null })
   })
 
-  it('Data pendukung: personal & employment go to the profile, income to the KPR, property to the KPR', async () => {
-    mockControls.reset('fresh')
-    const m = await api.mortgages.createSetup()
-    const personal = { fullName: 'Firdi Audi', nik: '3174012345678901' }
-    const employment = { occupation: 'private_employee', companyName: 'PT Nusantara Digital', monthlyIncome: 18_000_000 }
-    const saved = await api.mortgages.saveSetupStep(m.id, { step: 2, values: { personal, employment, property: { type: 'landed_house', address: 'Griya Asri Blok C2' } } })
-    expect(saved).not.toHaveProperty('personal')
-    expect(saved).not.toHaveProperty('employment')
-    expect(saved.finance.monthlyIncome).toBe(18_000_000)
-    expect(saved.property.type).toBe('landed_house')
-    const snap = await api.dashboard.getSnapshot()
-    expect(snap.profile).toMatchObject({ ...personal, occupation: 'private_employee', companyName: 'PT Nusantara Digital' })
-    expect(snap.finance.monthlyIncome).toBe(18_000_000)
+  it('Data properti filled after activation is saved on the KPR', async () => {
+    mockControls.reset('mortgage_active_normal')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { property: { type: 'landed_house', address: 'Griya Asri Blok C2' } } })
+    expect(saved.property).toMatchObject({ type: 'landed_house', address: 'Griya Asri Blok C2' })
+    expect(saved.status).toBe('active')
   })
 
   it('saving unrelated fields keeps an existing sisa pinjaman stable', async () => {

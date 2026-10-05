@@ -3,27 +3,24 @@ import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-
 import { toast } from 'sonner'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { CheckIcon, LockIcon, PencilIcon } from 'lucide-react'
-import { PiCalculatorFill, PiEqualsFill, PiListChecksFill, PiTrendDownFill, PiTrendUpFill } from 'react-icons/pi'
+import { PiCalculatorFill, PiEqualsFill, PiTrendDownFill, PiTrendUpFill } from 'react-icons/pi'
 import { api } from '@/data/api'
 import { DEFAULT_REMINDERS } from '@/data/seed'
 import { calculateMaxPrincipal } from '@/calculations/finance'
 import { useForm, useResource } from '@/lib/hooks'
-import { BANKS, CERTIFICATES, CITIES, OCCUPATIONS, PROPERTY_TYPES, bpsInput, dateShort, intInput, labelOf, maskNik, moneyInput, percentBps, rupiah, rupiahShort, tenorLabel, toBps, toInt, toMoney } from '@/lib/format'
+import { BANKS, bpsInput, dateShort, intInput, moneyInput, percentBps, rupiah, rupiahShort, tenorLabel, toBps, toInt, toMoney } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, RateField, SelectField, TextField } from '@/components/shared/fields'
-import { FormDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { UnsavedChangesGuard } from '@/components/shared/dialogs'
 import { WizardProgress } from '@/components/shared/progress'
 import { ErrorPanel, Notice, PageSkeleton, Spinner } from '@/components/shared/ui'
-import { profileFormValues, toEmployment, toPersonal, validatePersonal } from '@/domains/applications/validation'
-import { validateEmploymentBasic } from '@/domains/optimize/validation'
-import { IncomeFields, JobFields, PersonalFields } from '@/domains/profile/ProfilePages'
 import { deriveMortgage } from './derive'
 import { ReminderSettingsForm } from './ReminderSettingsForm'
 import { SETUP_PERCENT, SETUP_STEPS, SETUP_TITLES, setupStepOf } from './setupMeta'
-import { FIXED_PASSED, filledOnly, remainingFromStart, validateLoanStep, validatePropertyStep, validateReminders } from './validation'
+import { FIXED_PASSED, RATE_AUTO_HINT, impliedRate, remainingFromStart, validateLoanStep, validateReminders, withImpliedRate } from './validation'
 
-const RETURN = { mykpr: '/my-kpr/overview', home: '/', profile: '/profile', rate: '/my-kpr/rate', property: '/my-kpr/property', explore: '/explore', review: '/monitoring/setup/3' }
+const RETURN = { mykpr: '/my-kpr/overview', home: '/', profile: '/profile', rate: '/my-kpr/rate', explore: '/explore', review: '/monitoring/setup/2' }
 const SCHEMES = [
   { value: 'conventional', label: 'Konvensional' },
   { value: 'sharia', label: 'Syariah' },
@@ -36,17 +33,6 @@ const KNOWS = [
   { value: 'yes', label: 'Ya, ada angka dari bank' },
   { value: 'no', label: 'Tidak, hitungkan perkiraan' },
 ]
-const NO_YES = [
-  { value: 'no', label: 'Tidak' },
-  { value: 'yes', label: 'Ya' },
-]
-// Step 2 is three short forms, like Take Over's Data pribadi → Pekerjaan screens. `required`: the only
-// fields a form needs to be saved (this setup's rule; Profile and Take Over keep theirs). The rest can come later.
-const PARTS = [
-  { slug: '', title: 'Data pribadi', desc: 'Sesuai KTP. Disimpan di profil kamu.', required: ['fullName'] },
-  { slug: 'pekerjaan', title: 'Pekerjaan & penghasilan', desc: 'Untuk rasio cicilan di KPR Health dan pengajuan Take Over.', required: ['monthlyIncome', 'partnerIncome'] },
-  { slug: 'properti', title: 'Data properti', desc: 'Untuk nilai properti, LTV, dan pengajuan Take Over atau Top-up.', required: [] },
-]
 // Pop-up entrance for live estimates: springs up from slightly below with a small overshoot so it catches the eye.
 // Siblings jump to their new place (no layout animation) so the card pops into open space instead of under them.
 const POP = {
@@ -54,21 +40,18 @@ const POP = {
   animate: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', bounce: 0.45, duration: 0.55 } },
   exit: { opacity: 0, scale: 0.95, transition: { duration: 0.15 } },
 }
-const partPath = (i) =>`/monitoring/setup/2${PARTS[i].slug ? `/${PARTS[i].slug}` : ''}`
 
 export function MortgageSetupWizard() {
-  const { step, part } = useParams()
+  const { step } = useParams()
   const n = Number(step)
   const [params] = useSearchParams()
   const edit = params.get('edit')
   const navigate = useNavigate()
   const { data: snap, error, reload, setData } = useResource(() => api.dashboard.getSnapshot())
 
-  // Links from the old 6-step setup (e.g. setup/6?edit=review) land on the last step.
-  if (n > 3 && n <= 6) return <Navigate to="/monitoring/setup/3" replace />
-  if (!(n >= 1 && n <= 3)) return <Navigate to="/monitoring/intro" replace />
-  const i = n === 2 ? PARTS.findIndex((x) => x.slug === (part ?? '')) : part ? -1 : 0
-  if (i < 0) return <Navigate to={`/monitoring/setup/${n}`} replace />
+  // Links from older setups (e.g. setup/3, setup/6?edit=review) land on the last step.
+  if (n > 2 && n <= 6) return <Navigate to="/monitoring/setup/2" replace />
+  if (!(n >= 1 && n <= 2)) return <Navigate to="/monitoring/intro" replace />
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   const draft = snap.mortgages.find((m) => m.status === 'draft')
   const active = snap.mortgages.find((m) => m.status === 'active')
@@ -76,32 +59,29 @@ export function MortgageSetupWizard() {
   const m = editingActive ? active : draft
   if (!m) return <Navigate to={active ? '/my-kpr/overview' : '/monitoring/intro'} replace />
   // Reminders of an active KPR are managed in Profile → Reminder.
-  if (editingActive && n === 3) return <Navigate to="/profile/reminders" replace />
+  if (editingActive && n === 2) return <Navigate to="/profile/reminders" replace />
   const reached = setupStepOf(m)
   if (m.status === 'draft' && n > reached) return <Navigate to={`/monitoring/setup/${reached}`} replace />
 
   const returnTo = edit ? RETURN[edit] ?? '/my-kpr/overview' : null
-  const backTo = returnTo ?? (n === 1 ? '/monitoring/intro' : n === 3 ? partPath(PARTS.length - 1) : i ? partPath(i - 1) : '/monitoring/setup/1')
-  // `profile`: what a step 2 form wrote to the profile, so the next form and the summary show it without a refetch.
-  const onSaved = (saved, { profile, to, quiet } = {}) => {
-    setData((s) => ({ ...s, mortgages: s.mortgages.map((x) => (x.id === saved.id ? saved : x)), ...(profile && { profile: { ...s.profile, ...profile }, finance: saved.finance }) }))
-    if (!quiet) toast(edit ? 'Perubahan tersimpan.' : 'Tersimpan.')
-    navigate(returnTo ?? to ?? `/monitoring/setup/${n + 1}`)
+  const backTo = returnTo ?? (n === 1 ? '/monitoring/intro' : '/monitoring/setup/1')
+  const onSaved = (saved) => {
+    setData((s) => ({ ...s, mortgages: s.mortgages.map((x) => (x.id === saved.id ? saved : x)) }))
+    toast(edit ? 'Perubahan tersimpan.' : 'Tersimpan.')
+    navigate(returnTo ?? `/monitoring/setup/${n + 1}`)
   }
-  const common = { m, snap, clock: snap.clock, onSaved, editing: !!edit, backTo, navigate }
-  // Each step 2 form moves the bar a third of a step (45 → 55 → 65%).
-  const percent = Math.max(n === 2 ? SETUP_PERCENT[1] + 10 * i : SETUP_PERCENT[n - 1], SETUP_PERCENT[reached - 1])
+  const common = { m, clock: snap.clock, onSaved, editing: !!edit, backTo, navigate }
 
   return (
     <>
       <PageHeader title={edit ? 'Edit Data KPR' : 'Tambahkan KPR'} subtitle={SETUP_TITLES[n - 1]} back={backTo} />
       {!editingActive && (
         <WizardProgress
-          label={`Bagian ${n} dari 3 · ${SETUP_STEPS[n - 1]}`}
+          label={`Bagian ${n} dari ${SETUP_STEPS.length} · ${SETUP_STEPS[n - 1]}`}
           steps={SETUP_STEPS}
           current={n}
-          reached={Math.max(n === 2 ? 2 + i / PARTS.length : n, reached)}
-          percent={percent}
+          reached={Math.max(n, reached)}
+          percent={Math.max(SETUP_PERCENT[n - 1], SETUP_PERCENT[reached - 1])}
           savedLabel="Tersimpan setiap klik Simpan & Lanjutkan"
         />
       )}
@@ -110,9 +90,7 @@ export function MortgageSetupWizard() {
           Perubahan cicilan, bunga, atau sisa tenor akan menghitung ulang sisa pinjaman, reminder, dan KPR Health.
         </Notice>
       )}
-      {n === 1 && <LoanStep {...common} />}
-      {n === 2 && (i < 2 ? <ProfilePart key={i} i={i} {...common} /> : <PropertyPart i={i} {...common} />)}
-      {n === 3 && <ReminderStep {...common} />}
+      {n === 1 ? <LoanStep {...common} /> : <ReminderStep {...common} />}
     </>
   )
 }
@@ -170,11 +148,11 @@ function Footer({ editing, backTo, navigate, saving, extra }) {
 function useSave(m, step, onSaved) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const save = async (values, opts = {}) => {
+  const save = async (values) => {
     setSaving(true)
     setError('')
     try {
-      onSaved(await api.mortgages.saveSetupStep(m.id, { step: opts.step ?? step, values }), opts)
+      onSaved(await api.mortgages.saveSetupStep(m.id, { step, values }))
     } catch (e) {
       setError(e.message)
       setSaving(false)
@@ -236,6 +214,10 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
   // The Notice below carries the past-date error with its one-tap fix; repeating it under the field would push
   // that button down as the field blurs on tap.
   const fixedUntil = form.bind('fixedUntil')
+  // Pinjaman, cicilan, tenor and jenis bunga keep an auto-filled bunga in step; it stays editable.
+  const setRateSource = (patch) => form.setValues((p) => withImpliedRate(p, { ...p, ...patch }, 'currentRate', 'rateStatus'))
+  const bindRateSource = (key) => ({ ...form.bind(key), onChange: (x) => setRateSource({ [key]: x }) })
+  const rateIsAuto = v.currentRate !== '' && v.currentRate === impliedRate(v, v.rateStatus)
   const loan = loanPreview(v, clock)
   const impact = floatingPreview(m, v, clock, loan)
   const estimating = v.knowsOutstanding === 'no' && v.scheme !== 'sharia'
@@ -307,18 +289,18 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
               KPR syariah: reminder tetap aktif, tetapi amortisasi dan perkiraan sisa pokok belum tersedia.
             </Notice>
           )}
-          <MoneyField label="Jumlah pinjaman awal" required placeholder="600.000.000" {...form.bind('originalPrincipal')} />
-          <MoneyField label="Cicilan bulanan saat ini" required placeholder="4.250.000" {...form.bind('currentPayment')} />
-          <NumberField label="Tenor awal" required placeholder="240" suffix="bulan" hint={tenor ? `${tenor} bulan = ${tenorLabel(tenor)}` : ''} {...form.bind('originalTenorMonths')} />
+          <MoneyField label="Jumlah pinjaman awal" required placeholder="600.000.000" {...bindRateSource('originalPrincipal')} />
+          <NumberField label="Tenor awal" required placeholder="240" suffix="bulan" hint={tenor ? `${tenor} bulan = ${tenorLabel(tenor)}` : ''} {...bindRateSource('originalTenorMonths')} />
           <DateField label="Tanggal akad" required max={clock} {...form.bind('startDate')} />
           <NumberField label="Jatuh tempo setiap tanggal" required placeholder="22" maxLength={2} hint={toInt(v.dueDay) > 28 ? 'Di bulan tanpa tanggal ini, jatuh tempo pada hari terakhir bulan.' : ''} {...form.bind('dueDay')} />
         </FormGrid>
       </Section>
 
-      <Section title="Bunga">
+      <Section title="Cicilan & bunga">
         <FormGrid>
-          <RadioCards label="Bunga KPR kamu sekarang?" required options={RATE_TYPES} span {...form.bind('rateStatus')} />
-          <RateField label="Bunga saat ini" required {...form.bind('currentRate')} />
+          <MoneyField label="Cicilan bulanan saat ini" required placeholder="4.250.000" {...bindRateSource('currentPayment')} />
+          <RateField label="Bunga saat ini" required hint={rateIsAuto ? RATE_AUTO_HINT : ''} {...form.bind('currentRate')} />
+          <RadioCards label="Jenis bunga" required options={RATE_TYPES} span {...bindRateSource('rateStatus')} />
           {fixed && <DateField label="Fixed berakhir" required hint="Lihat di surat akad atau aplikasi bank. Kalau hanya tahu bulannya, pilih tanggal 1." {...fixedUntil} error={passed ? undefined : fixedUntil.error} />}
           {fixed && <RateField label="Estimasi bunga floating" required placeholder="10,50" hint="Untuk amortisasi setelah fixed. Belum tahu? Tanyakan ke bank atau isi perkiraan dulu." {...form.bind('floatingRate')} />}
         </FormGrid>
@@ -327,7 +309,7 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
             tone="warn"
             role="status"
             action={
-              <Button variant="outline" size="sm" onClick={() => form.setValues({ ...v, rateStatus: 'floating', fixedUntil: '' })}>
+              <Button variant="outline" size="sm" onClick={() => setRateSource({ rateStatus: 'floating', fixedUntil: '' })}>
                 Pilih Sudah floating
               </Button>
             }
@@ -354,185 +336,8 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
   )
 }
 
-// ---------- Step 2 · Data pendukung (opsional, 3 form) ----------
-// Like Take Over's sub-steps, only the last form moves the draft on to step 3. "Lewati" never saves the form,
-// except while `mustSave` (a required field isn't saved yet): then it validates, highlights and saves like Simpan.
-function SupportPart({ i, m, snap, form, toValues, mustSave, onSaved, editing, backTo, navigate, children }) {
-  const last = i === PARTS.length - 1
-  const next = last ? undefined : partPath(i + 1)
-  const { saving, error, save } = useSave(m, last ? 2 : 1, onSaved)
-  const [askIncome, setAskIncome] = useState(false)
-  // Every skip to Reminder runs through here, so Penghasilan (required) is asked first when it isn't saved yet.
-  const toReminder = () => (snap.finance?.monthlyIncome > 0 ? save({}, { step: 2, quiet: true, to: '/monitoring/setup/3' }) : setAskIncome(true))
-  const onSubmit = form.submit((x) => {
-    const { values, profile } = toValues(x)
-    return save(values, { profile, to: next })
-  })
-  const skip = (
-    <button type="button" disabled={saving} onClick={mustSave ? onSubmit : () => (last ? toReminder() : navigate(next))} className="min-h-11 text-sm font-bold text-primary">
-      Lewati
-    </button>
-  )
-  return (
-    <>
-      <SetupLayout onSubmit={onSubmit} footer={<Footer editing={editing} backTo={backTo} navigate={navigate} saving={saving} extra={!editing && skip} />}>
-        <UnsavedChangesGuard when={form.dirty && !saving} />
-        <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
-        {!editing && (
-          <Notice
-            tone="info"
-            icon={PiListChecksFill}
-            title="Wajib hanya nama dan penghasilan bulanan"
-            action={
-              !last && (
-                <button type="button" disabled={saving} onClick={toReminder} className="min-h-11 text-[13px] font-bold text-primary underline">
-                  Lewati semua ke Reminder
-                </button>
-              )
-            }
-          >
-            Sisanya boleh menyusul. Yang kamu isi tersimpan sekali dan otomatis terpakai saat Take Over atau Refinancing, jadi tidak perlu input ulang.
-          </Notice>
-        )}
-        <Section title={PARTS[i].title} desc={`${PARTS[i].desc} ${PARTS[i].required.length ? 'Untuk menyimpan, cukup isi kolom bertanda *. Sisanya bisa menyusul.' : 'Semua kolom boleh kosong, isi yang kamu tahu.'}`} action={<span className="shrink-0 text-xs font-bold text-muted-foreground">Form {i + 1} dari {PARTS.length}</span>}>
-          {children}
-        </Section>
-        {error && <Notice tone="bad" role="alert">{error}</Notice>}
-      </SetupLayout>
-      {/* Outside the page form: React events bubble through portals, so a submit here would submit the page too.
-          Starts from what was typed on this page (Pekerjaan), else the saved profile. */}
-      {askIncome && (
-        <IncomeDialog
-          initial={{ ...profileFormValues(snap.profile ?? {}, snap.finance ?? {}), ...form.values }}
-          saving={saving}
-          error={error}
-          onClose={() => setAskIncome(false)}
-          onSave={(employment) => save({ employment }, { step: 2, profile: employment, to: '/monitoring/setup/3' })}
-        />
-      )}
-    </>
-  )
-}
-
-const INCOME = ['monthlyIncome', 'jointIncome', 'partnerIncome', 'vehicleDebt', 'cardDebt', 'otherDebt']
-const validateIncome = (v) => filledOnly(validateEmploymentBasic(v), v, PARTS[1].required)
-
-// Pop-up before skipping to Reminder: Penghasilan is required, the other debts are optional (KPR Health ratio).
-function IncomeDialog({ initial, saving, error, onClose, onSave }) {
-  const form = useForm(Object.fromEntries(INCOME.map((k) => [k, initial[k]])), validateIncome)
-  const onSubmit = form.submit((x) =>
-    onSave({
-      monthlyIncome: toMoney(x.monthlyIncome),
-      jointIncome: x.jointIncome,
-      partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
-      vehicleDebt: toMoney(x.vehicleDebt),
-      cardDebt: toMoney(x.cardDebt),
-      otherDebt: toMoney(x.otherDebt),
-    }),
-  )
-  return (
-    <FormDialog open onOpenChange={(open) => !open && !saving && onClose()} title="Isi penghasilan dulu" description="Penghasilan bulanan wajib untuk rasio cicilan di KPR Health. Cicilan lain boleh dikosongkan." className="max-w-[560px]">
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
-        <FormGrid>
-          <IncomeFields form={form} required={PARTS[1].required} />
-        </FormGrid>
-        {error && <Notice tone="bad" role="alert">{error}</Notice>}
-        <Button type="submit" disabled={saving} aria-busy={saving}>
-          {saving && <Spinner />}
-          {saving ? 'Menyimpan…' : 'Simpan & ke Reminder'}
-        </Button>
-      </form>
-    </FormDialog>
-  )
-}
-
-function ProfilePart({ i, snap, clock, ...rest }) {
-  const personal = i === 0
-  const { required } = PARTS[i]
-  const validate = useCallback((v) => filledOnly(personal ? validatePersonal(v, { today: clock }) : validateEmploymentBasic(v), v, required), [personal, clock, required])
-  const initial = profileFormValues(snap.profile ?? {}, snap.finance ?? {})
-  const form = useForm(initial, validate)
-  const toValues = (x) => {
-    const data = personal ? toPersonal(x) : toEmployment(x)
-    return { values: { [personal ? 'personal' : 'employment']: data }, profile: data }
-  }
-  // The saved data misses a required field (e.g. no Penghasilan yet), so this form can't be skipped.
-  const mustSave = required.some((k) => validate(initial)[k])
-  return (
-    <SupportPart i={i} snap={snap} form={form} toValues={toValues} mustSave={mustSave} {...rest}>
-      {personal ? (
-        <PersonalFields form={form} clock={clock} contactField={snap.user?.contactType === 'email' ? 'email' : 'phone'} required={required} />
-      ) : (
-        // Income first: it is what KPR Health needs; the job details can come later.
-        <FormGrid>
-          <IncomeFields form={form} required={required} />
-          <JobFields form={form} />
-        </FormGrid>
-      )}
-    </SupportPart>
-  )
-}
-
-const PROPERTY_TEXT = ['type', 'city', 'address', 'landArea', 'buildingArea', 'certificateType', 'certificateOwner', 'estimatedValue']
-const validateProperty = (v) => filledOnly(validatePropertyStep(v), v)
-
-function PropertyPart({ i, m, clock, ...rest }) {
-  const p = m.property ?? {}
-  const form = useForm(
-    {
-      type: p.type ?? '',
-      city: p.city ?? '',
-      address: p.address ?? '',
-      landArea: intInput(p.landArea),
-      buildingArea: intInput(p.buildingArea),
-      certificateType: p.certificateType ?? '',
-      certificateOwner: p.certificateOwner ?? '',
-      estimatedValue: moneyInput(p.estimatedValue),
-      disputed: p.disputed ? 'yes' : 'no',
-    },
-    validateProperty,
-  )
-  const v = form.values
-  const toValues = (y) => {
-    if (y.disputed === 'no' && PROPERTY_TEXT.every((k) => !y[k].trim())) return { values: {} }
-    const value = toMoney(y.estimatedValue)
-    return {
-      values: {
-        property: {
-          type: y.type || null,
-          city: y.city || null,
-          address: y.address.trim() || null,
-          landArea: toInt(y.landArea),
-          buildingArea: toInt(y.buildingArea),
-          certificateType: y.certificateType || null,
-          certificateOwner: y.certificateOwner.trim() || null,
-          estimatedValue: value,
-          valueAsOf: value ? (value === p.estimatedValue ? p.valueAsOf : clock) : null,
-          disputed: y.disputed === 'yes',
-        },
-      },
-    }
-  }
-  return (
-    <SupportPart i={i} m={m} form={form} toValues={toValues} {...rest}>
-      <FormGrid>
-        <SelectField label="Jenis properti" options={PROPERTY_TYPES} {...form.bind('type')} />
-        <SelectField label="Kota/Kabupaten" options={CITIES} {...form.bind('city')} />
-        <TextField label="Alamat properti" placeholder="Griya Asri Blok C2, Bekasi" span {...form.bind('address')} />
-        <NumberField label="Luas tanah" suffix="m²" placeholder="72" {...form.bind('landArea')} />
-        <NumberField label="Luas bangunan" suffix="m²" placeholder="45" {...form.bind('buildingArea')} />
-        <SelectField label="Status sertifikat" options={CERTIFICATES} {...form.bind('certificateType')} />
-        <TextField label="Nama pemilik sertifikat" placeholder="Firdi Audi" {...form.bind('certificateOwner')} />
-        <MoneyField label="Estimasi nilai properti sekarang" placeholder="850.000.000" hint="Bukan appraisal resmi." span {...form.bind('estimatedValue')} />
-        <RadioCards label="Apakah properti sedang bersengketa?" options={NO_YES} span {...form.bind('disputed')} />
-      </FormGrid>
-      {v.disputed === 'yes' && <Notice tone="warn" role="note">Beberapa produk pinjaman mungkin memerlukan pemeriksaan manual. Pemantauan KPR tetap bisa diaktifkan.</Notice>}
-    </SupportPart>
-  )
-}
-
-// ---------- Step 3 · Reminder & aktivasi ----------
-function ReminderStep({ m, snap, clock, navigate }) {
+// ---------- Step 2 · Reminder & aktivasi ----------
+function ReminderStep({ m, clock, navigate }) {
   const isFixed = m.currentRateType === 'fixed' && !!m.fixedUntil && m.fixedUntil > clock
   const [reminders, setReminders] = useState(() => {
     const r = structuredClone(m.reminders ?? DEFAULT_REMINDERS)
@@ -543,16 +348,9 @@ function ReminderStep({ m, snap, clock, navigate }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const errors = validateReminders(reminders)
-  const p = snap.profile ?? {}
-  const f = m.finance ?? {}
-  const pr = m.property ?? {}
-  const empty = ['Belum diisi (opsional)']
   const sections = [
     { title: 'KPR', to: '/monitoring/setup/1', lines: [`${m.bankName}${m.productName ? ` · ${m.productName}` : ''}`, `Pinjaman awal ${rupiah(m.originalPrincipal)} · ${tenorLabel(m.originalTenorMonths)}`, `Cicilan ${rupiah(m.currentPayment)}/bulan · jatuh tempo tgl ${m.dueDay}`, `Sisa pokok ${m.outstandingPrincipal ? `${rupiah(m.outstandingPrincipal)}${m.outstandingEstimated ? ' (perkiraan)' : ''}` : 'belum dihitung'} · sisa ${m.remainingTenorMonths} bulan`] },
     { title: 'Bunga', to: '/monitoring/setup/1', lines: m.currentRateType === 'fixed' ? [`Fixed ${percentBps(m.currentRateBps)} sampai ${dateShort(m.fixedUntil)}`, `Estimasi floating ${percentBps(m.estimatedFloatingRateBps)}`] : [`Floating ${percentBps(m.currentRateBps)}`] },
-    { title: 'Data pribadi', to: partPath(0), filled: !!p.fullName, lines: p.fullName ? [p.fullName, p.nik ? `NIK ${maskNik(p.nik)}` : 'Data KTP bisa menyusul'] : empty },
-    { title: 'Pekerjaan & penghasilan', to: partPath(1), filled: f.monthlyIncome > 0, lines: f.monthlyIncome > 0 ? [`Penghasilan ${rupiah(f.monthlyIncome)}/bulan`, p.occupation ? `${labelOf(OCCUPATIONS, p.occupation)} · ${p.companyName}` : 'Pekerjaan bisa menyusul'] : empty },
-    { title: 'Properti', to: partPath(2), filled: !!(pr.type || pr.address), lines: pr.type || pr.address ? [pr.address || labelOf(PROPERTY_TYPES, pr.type), pr.estimatedValue ? `Estimasi nilai ${rupiah(pr.estimatedValue)}` : 'Nilai properti belum diisi'] : empty },
   ]
 
   const activate = async (e) => {
@@ -564,7 +362,7 @@ function ReminderStep({ m, snap, clock, navigate }) {
     try {
       await api.mortgages.saveSetupStep(m.id, { step: 3, values: { reminders } })
       const res = await api.mortgages.activate(m.id, { confirmDataCorrect: true })
-      navigate('/monitoring/success', { replace: true, state: { scheduled: res.scheduledReminderCount } })
+      navigate('/', { replace: true, state: { success: { scheduled: res.scheduledReminderCount } } })
     } catch (err) {
       setError(err.message)
       setPending(false)
@@ -576,7 +374,7 @@ function ReminderStep({ m, snap, clock, navigate }) {
       onSubmit={activate}
       footer={
         <>
-          <Button variant="neutral" onClick={() => navigate(partPath(PARTS.length - 1))}>
+          <Button variant="neutral" onClick={() => navigate('/monitoring/setup/1')}>
             Kembali
           </Button>
           <Button type="submit" disabled={pending} aria-busy={pending} className={!agree ? 'bg-border text-ink-3 hover:bg-border' : ''}>
@@ -597,11 +395,11 @@ function ReminderStep({ m, snap, clock, navigate }) {
                 <h3 className="text-[15px] font-extrabold">{s.title}</h3>
                 <button type="button" onClick={() => navigate(`${s.to}?edit=review`)} className="flex min-h-11 items-center gap-1.5 text-[13px] font-bold text-primary">
                   <PencilIcon className="size-3.5" aria-hidden />
-                  {s.filled === false ? 'Isi' : 'Edit'}
+                  Edit
                 </button>
               </div>
               {s.lines.map((l) => (
-                <span key={l} className={s.filled === false ? 'text-sm leading-5 text-muted-foreground' : 'text-sm leading-5 text-ink-2'}>
+                <span key={l} className="text-sm leading-5 text-ink-2">
                   {l}
                 </span>
               ))}

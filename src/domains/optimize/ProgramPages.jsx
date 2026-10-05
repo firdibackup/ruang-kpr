@@ -9,7 +9,7 @@ import { PURPOSES, dateShort, labelOf, monthYear, percentBps, percentRatio, rupi
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/domains/applications/PrimaryCompare'
-import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
+import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, HeroCard, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
 import { takeoverScreenOf } from '@/domains/applications/meta'
 import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/MonitoringDashboard'
@@ -181,18 +181,18 @@ export function ProgramsPage() {
   return (
     <>
       <Header sim={sim} title={`Pilihan ${modeName(sim.input.mode)}`} subtitle="Estimasi berdasarkan profil kamu. Pilih satu program." back="/optimize/baseline" />
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-border bg-card px-[22px] py-[18px]">
+      <HeroCard scenery={false} className="flex-row flex-wrap items-center justify-between gap-4 px-[22px] py-[18px] sm:px-[22px] sm:py-[18px]">
         <div className="flex items-center gap-3">
-          <BankMark mark={markOf(sim.oldBank.name)} tone="muted" size="sm" />
+          <BankMark mark={markOf(sim.oldBank.name)} tone="glass" size="sm" />
           <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-bold text-muted-foreground">Pembanding · KPR saat ini</span>
+            <span className="text-xs font-bold text-white/80">Pembanding · KPR saat ini</span>
             <span className="text-sm font-bold">
               {sim.oldBank.name} · {rupiah(b.currentPayment)}/bln · {percentBps(b.rateBps)} · {b.remainingMonths} bulan
             </span>
           </div>
         </div>
-        {topup && <Chip tone="info">Butuh {rupiahShort(sim.input.requestedTopup)} · {labelOf(PURPOSES, sim.input.purpose)}</Chip>}
-      </div>
+        {topup && <Chip tone="glass">Butuh {rupiahShort(sim.input.requestedTopup)} · {labelOf(PURPOSES, sim.input.purpose)}</Chip>}
+      </HeroCard>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <span className="text-[15px] font-bold text-ink-3">{sim.items.length} program sesuai estimasi profil</span>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Urutkan program">

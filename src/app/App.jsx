@@ -5,16 +5,15 @@ import { SessionProvider, useSession } from '@/domains/session/SessionProvider'
 import { RegisterPage, VerifyPage } from '@/domains/session/AuthPages'
 import { HomePage } from '@/domains/home/HomePage'
 import { PrimaryWizard } from '@/domains/applications/PrimaryWizard'
-import { PrimarySuccess } from '@/domains/applications/PrimarySuccess'
 import { ApplicationTracker } from '@/domains/applications/ApplicationTracker'
-import { MonitoringIntro, MonitoringSuccess } from '@/domains/mortgages/MonitoringPages'
+import { MonitoringIntro } from '@/domains/mortgages/MonitoringPages'
 import { MortgageSetupWizard } from '@/domains/mortgages/MortgageSetupWizard'
 import { MyKprLayout, MyKprResolver } from '@/domains/mortgages/MyKprLayout'
 import { OverviewTab, PaymentTab, PropertyTab, RateTab } from '@/domains/mortgages/MyKprTabs'
 import { AmortizationPage, AmortizationSchedulePage } from '@/domains/mortgages/AmortizationPages'
 import { HealthPage } from '@/domains/mortgages/HealthPage'
 import { ExplorePage, EducationPage } from '@/domains/explore/ExplorePages'
-import { OptimizeIntro, OptimizeSuccess } from '@/domains/optimize/OptimizeIntro'
+import { OptimizeIntro } from '@/domains/optimize/OptimizeIntro'
 import { OptimizeStepPage } from '@/domains/optimize/OptimizeSteps'
 import { GoalStartPage } from '@/domains/optimize/GoalStartPage'
 import { BaselinePage, ProgramsPage, ProgramDetailPage, ConfirmProgramPage } from '@/domains/optimize/ProgramPages'
@@ -48,11 +47,9 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <HomePage /> },
           { path: 'home', element: <Navigate to="/" replace /> },
-          { path: 'apply/primary/success', element: <PrimarySuccess /> },
           { path: 'apply/primary/:step/:productId?', element: <PrimaryWizard /> },
           { path: 'monitoring/intro', element: <MonitoringIntro /> },
-          { path: 'monitoring/setup/:step/:part?', element: <MortgageSetupWizard /> },
-          { path: 'monitoring/success', element: <MonitoringSuccess /> },
+          { path: 'monitoring/setup/:step', element: <MortgageSetupWizard /> },
           { path: 'optimize/intro', element: <OptimizeIntro /> },
           { path: 'optimize/start', element: <GoalStartPage /> },
           { path: 'optimize/1/pekerjaan', element: <OptimizeStepPage employment /> },
@@ -60,7 +57,6 @@ const router = createBrowserRouter([
           { path: 'optimize/programs', element: <ProgramsPage /> },
           { path: 'optimize/programs/:productId', element: <ProgramDetailPage /> },
           { path: 'optimize/programs/:productId/confirm', element: <ConfirmProgramPage /> },
-          { path: 'optimize/success', element: <OptimizeSuccess /> },
           { path: 'optimize/:step', element: <OptimizeStepPage /> },
           { path: 'my-kpr', element: <MyKprResolver /> },
           { path: 'my-kpr/application', element: <ApplicationTracker /> },

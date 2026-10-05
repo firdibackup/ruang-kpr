@@ -109,7 +109,8 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   await submit.click()
 
   await expect(page.getByRole('heading', { name: 'Pengajuan berhasil dikirim' })).toBeVisible()
-  await page.getByRole('link', { name: 'Pantau Pengajuan' }).click()
+  await page.getByRole('button', { name: 'Lihat Dashboard' }).click()
+  await page.getByRole('link', { name: 'Lihat detail', exact: true }).click()
   await expect(page).toHaveURL(/my-kpr\/application/)
   await expect(page.getByText('Status: Diajukan')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Batalkan Pengajuan' })).toBeVisible()

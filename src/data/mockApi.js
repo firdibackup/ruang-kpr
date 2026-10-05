@@ -683,15 +683,10 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (values.reminders && (!values.reminders.payment.length || !(values.reminders.channels.inApp || values.reminders.channels.email))) {
           fail('VALIDATION_FAILED', 'Pilih minimal satu jadwal pembayaran dan satu kanal.', 400)
         }
-        // Step 2 (Data pendukung): personal & employment live on the profile, reused by Take Over;
-        // KPR Health reads the mortgage's copy of the money fields.
-        const { personal, employment, ...core } = values
-        syncProfile(db, { personal, employment })
-        if (employment) m.finance = { ...m.finance, ...db.finance }
         const before = { ...m }
-        Object.assign(m, core)
+        Object.assign(m, values)
         applyMortgageRules(m, before)
-        if (m.status === 'draft') m.setupStep = Math.min(3, Math.max(m.setupStep, step + 1))
+        if (m.status === 'draft') m.setupStep = Math.min(2, Math.max(m.setupStep, step + 1))
         touch(db, m)
         return m
       }),
@@ -699,7 +694,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         const m = findMortgage(db, id)
         if (m.status !== 'draft') fail('INVALID_STATE_TRANSITION', 'Pemantauan sudah aktif.', 400)
         if (!confirmDataCorrect) fail('VALIDATION_FAILED', 'Centang konfirmasi data dulu.', 400)
-        // Step 1 data (reminder + amortization) is required; Data pendukung is optional.
+        // Step 1 data (reminder + amortization) is required; profile and property data can come later.
         const required = ['bankName', 'originalPrincipal', 'currentPayment', 'originalTenorMonths', 'startDate', 'dueDay', 'remainingTenorMonths', 'currentRateBps', 'currentRateType']
         const missing = required.filter((k) => m[k] == null || m[k] === '')
         if (m.scheme !== 'sharia' && !(m.outstandingPrincipal > 0)) missing.push('outstandingPrincipal')
@@ -707,7 +702,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (!m.reminders?.payment?.length || !(m.reminders.channels.inApp || m.reminders.channels.email)) missing.push('reminders')
         if (missing.length) fail('VALIDATION_FAILED', 'Data KPR belum lengkap.', 400, { details: { missing } })
         m.status = 'active'
-        m.setupStep = 3
+        m.setupStep = 2
         m.activatedAt = nowIso(db)
         touch(db, m)
         const due = nextDueDate({ today: db.clock, dueDay: m.dueDay })

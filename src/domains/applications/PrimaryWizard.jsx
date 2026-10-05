@@ -252,8 +252,7 @@ function ReviewStep({ app, go }) {
     setError(null)
     try {
       await api.applications.submit(app.id, { consents })
-      toast.success(`Pengajuan terkirim ke ${s.bankName}.`)
-      go('/apply/primary/success', { replace: true, state: { id: app.id } })
+      go('/', { replace: true, state: { success: { appId: app.id } } })
     } catch (err) {
       setError(err)
       setPending(false)

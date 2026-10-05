@@ -137,7 +137,7 @@ export function HeroCard({ className, children, scenery = 'bottom' }) {
 export function BankMark({ mark, size = 'md', tone = 'primary' }) {
   return (
     <span
-      className={cn('flex shrink-0 items-center justify-center font-extrabold italic', size === 'lg' ? 'size-14 rounded-2xl text-base' : size === 'sm' ? 'size-10 rounded-lg text-[13px]' : 'size-[52px] rounded-xl text-[15px]', tone === 'primary' ? 'bg-secondary text-primary' : 'bg-muted text-ink-3')}
+      className={cn('flex shrink-0 items-center justify-center font-extrabold italic', size === 'lg' ? 'size-14 rounded-2xl text-base' : size === 'sm' ? 'size-10 rounded-lg text-[13px]' : 'size-[52px] rounded-xl text-[15px]', tone === 'primary' ? 'bg-secondary text-primary' : tone === 'glass' ? 'bg-white/15 text-white' : 'bg-muted text-ink-3')}
       aria-hidden
     >
       {mark}

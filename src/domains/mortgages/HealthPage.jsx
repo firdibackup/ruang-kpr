@@ -20,11 +20,12 @@ export function HealthPage() {
   const m = data.mortgages.find((x) => x.status === 'active')
   if (!m) return <Navigate to="/my-kpr" replace />
   const d = deriveMortgage(m, data.clock)
+  // Locked until penghasilan is filled; Home asks for it.
+  if (!(d.income > 0)) return <Navigate to="/" replace />
   const h = d.health
   const weakest = h.components.filter((c) => c.score !== null).sort((a, b) => a.score - b.score)[0]
   // One "Lengkapi" link per component that cannot be scored yet, each to the single place that field is asked.
   const complete = {
-    dti: { label: 'Isi penghasilan', to: '/profile/edit' },
     ltv: { label: 'Isi nilai properti', to: '/my-kpr/property?edit=1' },
     rate: { label: 'Isi jenis bunga', to: '/monitoring/setup/1?edit=mykpr' },
     progress: progressGap(m, 'mykpr'),

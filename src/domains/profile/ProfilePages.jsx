@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { BellIcon, BriefcaseIcon, LogOutIcon, PencilIcon, ShieldCheckIcon, UserIcon } from 'lucide-react'
 import { api } from '@/data/api'
@@ -8,12 +8,12 @@ import { GENDERS, MARITAL, OCCUPATIONS, dateLong, initials, labelOf, maskNik, ru
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, SelectField, TextAreaField, TextField } from '@/components/shared/fields'
-import { ConfirmDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { ConfirmDialog, FormDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
 import { WizardProgress } from '@/components/shared/progress'
 import { Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner, SummaryRows } from '@/components/shared/ui'
 import { useSession } from '@/domains/session/SessionProvider'
 import { ReminderSettingsForm, reminderSummary } from '@/domains/mortgages/ReminderSettingsForm'
-import { validateReminders } from '@/domains/mortgages/validation'
+import { filledOnly, validateReminders } from '@/domains/mortgages/validation'
 import { validateEmploymentBasic } from '@/domains/optimize/validation'
 import { profileFormValues, validatePersonal } from '@/domains/applications/validation'
 
@@ -70,6 +70,10 @@ export function ProfilePage() {
                 { k: 'Penghasilan bulanan', v: f.monthlyIncome ? rupiah(f.monthlyIncome) : 'Belum diisi', tone: f.monthlyIncome ? undefined : 'mute' },
               ]}
             />
+            <Button variant="outline" size="md" className="mt-3 w-fit" onClick={() => navigate('/profile/edit', { state: { step: 2 } })}>
+              <PencilIcon aria-hidden />
+              {f.monthlyIncome ? 'Edit Penghasilan' : 'Isi Penghasilan'}
+            </Button>
             <Disclaimer className="pt-2">Mengubah profil tidak mengubah data pengajuan yang sudah dikirim ke bank.</Disclaimer>
           </Panel>
         </div>
@@ -140,11 +144,13 @@ const PROFILE_STEPS = ['Data pribadi', 'Pekerjaan & penghasilan']
 
 function ProfileForm({ snap }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const p = snap.profile ?? {}
   const f = snap.finance ?? {}
   const validate = useCallback((v) => ({ ...validatePersonal(v, { today: snap.clock }), ...validateEmploymentBasic(v) }), [snap.clock])
   const form = useForm(profileFormValues(p, f), validate)
-  const [step, setStep] = useState(1)
+  // "Edit Penghasilan" opens step 2 directly, unless step 1 still has gaps that would block Simpan there.
+  const [step, setStep] = useState(() => (location.state?.step === 2 && !Object.keys(validatePersonal(form.values, { today: snap.clock })).length ? 2 : 1))
   const [saving, setSaving] = useState(false)
   const [apiError, setApiError] = useState('')
   const contactField = snap.user?.contactType === 'email' ? 'email' : 'phone'
@@ -234,8 +240,8 @@ function ProfileForm({ snap }) {
   )
 }
 
-// Shared with the KPR setup (Data pendukung): one form for the profile data Take Over reuses.
-// `required` lists the keys this form marks with *; each caller decides (the setup asks only Nama and Penghasilan).
+// One form for the profile data Take Over reuses.
+// `required` lists the keys this form marks with *; each caller decides (the Home income pop-up asks only Penghasilan).
 export function PersonalFields({ form, clock, contactField, required = [] }) {
   const req = (k) => required.includes(k)
   return (
@@ -279,6 +285,53 @@ export function IncomeFields({ form, required = [] }) {
       <MoneyField label="Kartu kredit / paylater" optional {...form.bind('cardDebt')} />
       <MoneyField label="Pinjaman lain" optional span hint="Dipakai untuk rasio cicilan di KPR Health." {...form.bind('otherDebt')} />
     </>
+  )
+}
+
+const INCOME = ['monthlyIncome', 'jointIncome', 'partnerIncome', 'vehicleDebt', 'cardDebt', 'otherDebt']
+const INCOME_REQUIRED = ['monthlyIncome', 'partnerIncome']
+const validateIncome = (v) => filledOnly(validateEmploymentBasic(v), v, INCOME_REQUIRED)
+
+// Unlocks KPR Health on Home: Penghasilan is the only required field, the other debts sharpen the ratio.
+export function IncomeDialog({ finance, onClose, onSaved }) {
+  const initial = profileFormValues({}, finance ?? {})
+  const form = useForm(Object.fromEntries(INCOME.map((k) => [k, initial[k]])), validateIncome)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const onSubmit = form.submit(async (x) => {
+    setSaving(true)
+    setError('')
+    try {
+      await api.profile.update({
+        finance: {
+          monthlyIncome: toMoney(x.monthlyIncome),
+          jointIncome: x.jointIncome,
+          partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
+          vehicleDebt: toMoney(x.vehicleDebt),
+          cardDebt: toMoney(x.cardDebt),
+          otherDebt: toMoney(x.otherDebt),
+        },
+      })
+      toast('Penghasilan tersimpan.')
+      onSaved()
+    } catch (e) {
+      setError(e.message)
+      setSaving(false)
+    }
+  })
+  return (
+    <FormDialog open onOpenChange={(open) => !open && !saving && onClose()} title="Isi penghasilan" description="Dipakai untuk rasio beban cicilan di KPR Health. Cicilan lain boleh dikosongkan." className="max-w-[560px]">
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        <FormGrid>
+          <IncomeFields form={form} required={INCOME_REQUIRED} />
+        </FormGrid>
+        {error && <Notice tone="bad" role="alert">{error}</Notice>}
+        <Button type="submit" disabled={saving} aria-busy={saving}>
+          {saving && <Spinner />}
+          {saving ? 'Menyimpan…' : 'Simpan Penghasilan'}
+        </Button>
+      </form>
+    </FormDialog>
   )
 }
 

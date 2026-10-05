@@ -101,6 +101,11 @@ import {
   validateOldLoan,
   validateTakeoverProperty,
 } from "./validation";
+import {
+  RATE_AUTO_HINT,
+  impliedRate,
+  withImpliedRate,
+} from "@/domains/mortgages/validation";
 
 const TENOR_OPTIONS = [5, 10, 15, 20, 25].map((y) => ({
   value: String(y * 12),
@@ -586,6 +591,15 @@ function OldLoanStep({ app, clock, setApp, next }) {
   const { saving, error, save } = useStepSave(app, 2, setApp);
   const v = form.values;
   const fixed = v.rateType === "fixed";
+  // Pinjaman, cicilan, tenor and jenis bunga keep an auto-filled bunga in step; it stays editable.
+  const bindRateSource = (key) => ({
+    ...form.bind(key),
+    onChange: (x) =>
+      form.setValues((p) =>
+        withImpliedRate(p, { ...p, [key]: x }, "rate", "rateType"),
+      ),
+  });
+  const rateIsAuto = v.rate !== "" && v.rate === impliedRate(v, v.rateType);
   const estimate =
     v.knowsOutstanding === "no" ? outstandingEstimate(v, clock) : null;
   const onSubmit = form.submit(async (x) => {
@@ -673,17 +687,13 @@ function OldLoanStep({ app, clock, setApp, next }) {
           />
           <MoneyField
             label="Pinjaman KPR awal"
-            {...form.bind("originalPrincipal")}
-          />
-          <MoneyField
-            label="Cicilan bulanan saat ini"
-            {...form.bind("currentPayment")}
+            {...bindRateSource("originalPrincipal")}
           />
           <NumberField
             label="Tenor awal"
             suffix="bulan"
             placeholder="240"
-            {...form.bind("originalTenorMonths")}
+            {...bindRateSource("originalTenorMonths")}
           />
           <DateField
             label="Tanggal akad"
@@ -699,16 +709,25 @@ function OldLoanStep({ app, clock, setApp, next }) {
       </Group>
       <Group
         icon={PercentIcon}
-        title="Bunga"
+        title="Cicilan & bunga"
         desc="Lihat di surat akad atau aplikasi bank."
       >
         <FormGrid>
-          <RateField label="Bunga saat ini" {...form.bind("rate")} />
+          <MoneyField
+            label="Cicilan bulanan saat ini"
+            {...bindRateSource("currentPayment")}
+          />
+          <RateField
+            label="Bunga saat ini"
+            hint={rateIsAuto ? RATE_AUTO_HINT : ""}
+            {...form.bind("rate")}
+          />
           <RadioCards
             label="Jenis bunga"
             options={RATE_TYPES}
             variant="pill"
-            {...form.bind("rateType")}
+            span
+            {...bindRateSource("rateType")}
           />
           {fixed && (
             <>
@@ -1606,10 +1625,7 @@ function TakeoverReview({ app, navigate }) {
     setError(null);
     try {
       await api.applications.submit(app.id, { consents: cons });
-      toast.success(
-        `Pengajuan terkirim ke ${s.bankName}. Data sekarang read-only.`,
-      );
-      navigate("/optimize/success", { replace: true, state: { id: app.id } });
+      navigate("/", { replace: true, state: { success: { appId: app.id } } });
     } catch (err) {
       setError(err);
       setPending(false);

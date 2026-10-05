@@ -45,7 +45,8 @@ test('take over from Explore: simulation creates no application; apply → docs 
   await page.getByRole('button', { name: 'Submit Pengajuan' }).click()
   await expect(page.getByRole('heading', { name: 'Pengajuan berhasil dikirim' })).toBeVisible()
   await expect(page.getByText('Tetap bayar cicilan bank lama')).toBeVisible()
-  await page.getByRole('link', { name: 'Pantau Pengajuan' }).click()
+  await page.getByRole('button', { name: 'Lihat Dashboard' }).click()
+  await page.getByRole('link', { name: 'Lihat detail', exact: true }).click()
   await expect(page.getByRole('list', { name: 'Status pengajuan' })).toContainText('Pelunasan KPR Lama')
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { deriveMortgage, healthScore, nextMilestone, rateMode } from './derive'
-import { FIXED_PASSED, filledOnly, remainingFromStart, validateLoanStep, validatePropertyStep, validateReminders } from './validation'
+import { FIXED_PASSED, filledOnly, impliedRate, remainingFromStart, validateLoanStep, validatePropertyStep, validateReminders, withImpliedRate } from './validation'
 import { createSeed } from '@/data/seed'
 
 const today = '2026-09-28'
@@ -44,7 +44,7 @@ describe('mortgage setup validation', () => {
     expect(Object.keys(validatePropertyStep({ ...property, address: '', certificateOwner: '' }))).toEqual(['address', 'certificateOwner'])
   })
 
-  it('Data pendukung: only the required keys must be filled; other fields are checked once typed', () => {
+  it('filledOnly: only the required keys must be filled; other fields are checked once typed', () => {
     const errors = { fullName: 'a', nik: 'b', email: 'c' }
     expect(filledOnly(errors, { fullName: '', nik: '', email: '' }, ['fullName'])).toEqual({ fullName: 'a' })
     expect(filledOnly(errors, { fullName: 'Firdi', nik: '123', email: '' }, ['fullName'])).toEqual({ fullName: 'a', nik: 'b' })
@@ -53,6 +53,19 @@ describe('mortgage setup validation', () => {
 
   it('reminders need one payment offset and one channel', () => {
     expect(validateReminders({ payment: [], channels: { inApp: false, email: false } })).toMatchObject({ payment: expect.any(String), channels: expect.any(String) })
+  })
+
+  it('bunga is auto-filled from pinjaman, cicilan and tenor until typed, and never for floating', () => {
+    const blank = { ...loan, currentRate: '', rateStatus: '' }
+    const step = (prev, patch) => withImpliedRate(prev, { ...prev, ...patch }, 'currentRate', 'rateStatus')
+    expect(impliedRate(loan, 'fixed')).toBe('5,50')
+    expect(impliedRate(loan, 'floating')).toBe('')
+    expect(impliedRate({ ...loan, currentPayment: '2000000' }, 'fixed')).toBe('') // below pinjaman / tenor: no positive rate
+    const auto = step(blank, { currentPayment: '4127324' })
+    expect(auto.currentRate).toBe('5,50')
+    expect(step(auto, { currentPayment: '4500000' }).currentRate).not.toBe('5,50') // still auto: follows cicilan
+    expect(step(auto, { rateStatus: 'floating' }).currentRate).toBe('') // payment may have changed: not guessed
+    expect(step({ ...auto, currentRate: '6,25' }, { currentPayment: '4500000' }).currentRate).toBe('6,25') // typed: kept
   })
 })
 

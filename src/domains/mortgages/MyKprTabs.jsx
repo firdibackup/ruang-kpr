@@ -4,14 +4,16 @@ import { toast } from 'sonner'
 import { ArrowRightIcon, CircleCheckIcon, CircleIcon, CircleAlertIcon, PaperclipIcon, PencilIcon, RefreshCwIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { addDays, daysUntil } from '@/calculations/dates'
-import { CERTIFICATES, PROPERTY_TYPES, dateLong, dateShort, daysLabel, labelOf, monthName, monthYear, percentBps, percentRatio, rupiah, signedRupiah, tenorLabel, toMoney } from '@/lib/format'
+import { useForm } from '@/lib/hooks'
+import { CERTIFICATES, CITIES, PROPERTY_TYPES, dateLong, dateShort, daysLabel, intInput, labelOf, moneyInput, monthName, monthYear, percentBps, percentRatio, rupiah, signedRupiah, tenorLabel, toInt, toMoney } from '@/lib/format'
 import { Button } from '@/components/ui/button'
-import { DateField, MoneyField, SelectField } from '@/components/shared/fields'
+import { DateField, FormGrid, MoneyField, NumberField, RadioCards, SelectField, TextField } from '@/components/shared/fields'
 import { FormDialog } from '@/components/shared/dialogs'
 import { UploadRow } from '@/components/shared/UploadRow'
 import { Timeline } from '@/components/shared/progress'
 import { Disclaimer, EstimateTag, Notice, Panel, ProgressBar, Spinner, SummaryRows } from '@/components/shared/ui'
 import { progressGap, rateTypeLabel } from './setupMeta'
+import { filledOnly, validatePropertyStep } from './validation'
 
 export function OverviewTab() {
   const { m, d, snap } = useOutletContext()
@@ -300,6 +302,7 @@ export function PropertyTab() {
   const [asOf, setAsOf] = useState(snap.clock)
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const [editing, setEditing] = useState(false)
   const p = m.property ?? {}
   const hasValue = p.estimatedValue > 0
   const save = async (e) => {
@@ -327,10 +330,8 @@ export function PropertyTab() {
             {labelOf(PROPERTY_TYPES, p.type)} · LT {p.landArea ?? '–'} / LB {p.buildingArea ?? '–'} · {labelOf(CERTIFICATES, p.certificateType)}
           </span>
         ) : (
-          // Skipped in the setup (Data pendukung): fill it there.
-          <Link to="/monitoring/setup/2/properti?edit=property" className="flex min-h-11 w-fit items-center text-sm font-bold text-primary underline">
-            Lengkapi data properti
-          </Link>
+          // Not asked in the setup: filled here or from Home, after activation.
+          <span className="text-sm text-ink-3">Detail properti belum diisi.</span>
         )}
         <SummaryRows
           className="mt-2"
@@ -354,10 +355,16 @@ export function PropertyTab() {
       </div>
       <div className="flex min-w-0 flex-col gap-3.5">
         <span className="text-[13px] text-ink-3">{hasValue ? `Nilai diperbarui ${dateShort(p.valueAsOf)}` : 'Nilai properti belum diisi.'}</span>
-        <Button variant="outline" size="md" className="w-fit" onClick={() => setOpen(true)}>
-          <RefreshCwIcon aria-hidden />
-          {hasValue ? 'Perbarui Nilai' : 'Isi Nilai Properti'}
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" size="md" onClick={() => setOpen(true)}>
+            <RefreshCwIcon aria-hidden />
+            {hasValue ? 'Perbarui Nilai' : 'Isi Nilai Properti'}
+          </Button>
+          <Button variant="outline" size="md" onClick={() => setEditing(true)}>
+            <PencilIcon aria-hidden />
+            {p.type ? 'Edit Data Properti' : 'Lengkapi Data Properti'}
+          </Button>
+        </div>
         <div className="flex flex-col gap-1.5 rounded-2xl bg-muted px-[18px] py-4 text-[13px] leading-5 text-ink-3">
           <span>Nilai properti bukan appraisal resmi.</span>
           <span>Equity bukan otomatis dana tunai.</span>
@@ -374,6 +381,100 @@ export function PropertyTab() {
           </Button>
         </form>
       </FormDialog>
+      {editing && (
+        <PropertyDialog
+          m={m}
+          clock={snap.clock}
+          onClose={() => setEditing(false)}
+          onSaved={(saved) => {
+            setMortgage(saved)
+            setEditing(false)
+          }}
+        />
+      )}
     </section>
+  )
+}
+
+const NO_YES = [
+  { value: 'no', label: 'Tidak' },
+  { value: 'yes', label: 'Ya' },
+]
+// The rest is optional (checked once typed); the value is what unlocks Peluang on Home.
+const validateProperty = (v) => {
+  const e = filledOnly(validatePropertyStep(v), v)
+  if (!(toMoney(v.estimatedValue) > 0)) e.estimatedValue = 'Isi estimasi nilai properti.'
+  return e
+}
+
+// Data properti of an active KPR, not asked in the setup. Opened from Home (Peluang) and from this tab.
+export function PropertyDialog({ m, clock, onClose, onSaved }) {
+  const p = m.property ?? {}
+  const form = useForm(
+    {
+      type: p.type ?? '',
+      city: p.city ?? '',
+      address: p.address ?? '',
+      landArea: intInput(p.landArea),
+      buildingArea: intInput(p.buildingArea),
+      certificateType: p.certificateType ?? '',
+      certificateOwner: p.certificateOwner ?? '',
+      estimatedValue: moneyInput(p.estimatedValue),
+      disputed: p.disputed ? 'yes' : 'no',
+    },
+    validateProperty,
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const v = form.values
+  const onSubmit = form.submit(async (y) => {
+    setSaving(true)
+    setError('')
+    const value = toMoney(y.estimatedValue)
+    try {
+      const saved = await api.mortgages.update(m.id, {
+        property: {
+          type: y.type || null,
+          city: y.city || null,
+          address: y.address.trim() || null,
+          landArea: toInt(y.landArea),
+          buildingArea: toInt(y.buildingArea),
+          certificateType: y.certificateType || null,
+          certificateOwner: y.certificateOwner.trim() || null,
+          estimatedValue: value,
+          valueAsOf: value === p.estimatedValue ? p.valueAsOf : clock,
+          valueLater: false,
+          disputed: y.disputed === 'yes',
+        },
+      })
+      toast('Data properti tersimpan.')
+      onSaved(saved)
+    } catch (e) {
+      setError(e.message)
+      setSaving(false)
+    }
+  })
+  return (
+    <FormDialog open onOpenChange={(o) => !o && !saving && onClose()} title="Data properti" description="Untuk LTV dan potensi Take Over atau Refinancing. Selain estimasi nilai, boleh dilengkapi nanti." className="max-w-[640px]">
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        <FormGrid>
+          <SelectField label="Jenis properti" options={PROPERTY_TYPES} {...form.bind('type')} />
+          <SelectField label="Kota / Kabupaten" options={CITIES} {...form.bind('city')} />
+          <TextField label="Alamat" placeholder="Griya Asri Blok C2 No. 8" span {...form.bind('address')} />
+          <NumberField label="Luas tanah" suffix="m²" {...form.bind('landArea')} />
+          <NumberField label="Luas bangunan" suffix="m²" {...form.bind('buildingArea')} />
+          <SelectField label="Status sertifikat" options={CERTIFICATES} {...form.bind('certificateType')} />
+          <TextField label="Nama pemilik sertifikat" {...form.bind('certificateOwner')} />
+          <MoneyField label="Estimasi nilai saat ini" required span hint="Nilai ini bukan appraisal resmi. Bank akan menilai ulang." {...form.bind('estimatedValue')} />
+          <RadioCards label="Sedang bersengketa?" variant="pill" span options={NO_YES} {...form.bind('disputed')} />
+        </FormGrid>
+        {v.disputed === 'yes' && <Notice tone="warn" role="note">Beberapa produk pinjaman mungkin memerlukan pemeriksaan manual. Pemantauan KPR tetap berjalan.</Notice>}
+        {error && <Notice tone="bad" role="alert">{error}</Notice>}
+        <Button type="submit" disabled={saving} aria-busy={saving}>
+          {saving && <Spinner />}
+          {saving ? 'Menyimpan…' : 'Simpan Data Properti'}
+        </Button>
+      </form>
+    </FormDialog>
   )
 }
