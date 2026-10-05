@@ -17,6 +17,7 @@ import {
   TriangleAlertIcon,
   WalletIcon,
 } from "lucide-react";
+import { PiSparkleFill } from "react-icons/pi";
 import { api } from "@/data/api";
 import { useResource } from "@/lib/hooks";
 import {
@@ -272,208 +273,151 @@ export function MonitoringDashboard({
         </Notice>
       )}
 
-      {/* Opportunity leads the dashboard; only the fixed-rate warning sits above it. */}
-      <section
-        className="grid grid-cols-1 gap-4 rounded-card border border-[#cfdcf3] bg-[#f3f7fe] p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:gap-x-7"
-        aria-labelledby="opp-title"
-      >
-        <div className="flex flex-col gap-4">
-          <img
-            src="/sparkles.webp"
-            alt=""
-            width={44}
-            height={44}
-            decoding="async"
-            className="size-11 shrink-0 rounded-lg object-cover"
-          />
-          <div className="flex flex-col gap-1.5">
-            <h2
-              id="opp-title"
-              className="text-xl leading-[27px] font-extrabold text-pretty"
-            >
-              {!oppLocked && opp?.cheaperProgramCount
-                ? "Ada ruang untuk cicilan lebih ringan."
-                : "Pantau peluang untuk KPR kamu."}
-            </h2>
-            <p className="text-sm leading-[21px] text-ink-3">
-              Potensi dari KPR kamu saat ini. Lihat biaya pindah dan break-even,
-              bukan hanya bunga promo.
-            </p>
-          </div>
-        </div>
-        {oppLocked ? (
-          <div className="flex flex-col items-start gap-3 rounded-xl bg-card px-4 py-3.5 md:row-span-2">
-            <span className="flex items-center gap-2 text-xs font-extrabold tracking-[0.4px] text-primary">
-              <LockIcon className="size-4" aria-hidden />
-              POTENSI TAKE OVER & REFINANCING
-            </span>
-            <p className="text-sm leading-[21px] text-ink-2">
-              Lengkapi {oppMissing} untuk melihat potensi cicilan lebih ringan
-              dan dana cair dari KPR kamu.
-            </p>
-            <Button
-              size="sm"
-              onClick={() =>
-                healthLocked ? setAskIncome(true) : setAskProperty(true)
-              }
-            >
-              {healthLocked ? "Isi Penghasilan" : "Isi Nilai Properti"}
-            </Button>
-          </div>
-        ) : exploreLoading && !explore ? (
-          <div className="flex flex-col gap-2 md:row-span-2" aria-busy="true">
-            <Skeleton className="h-24 rounded-xl" />
-            <Skeleton className="h-24 rounded-xl" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2 md:row-span-2">
-            <OpportunityTile
-              to="/explore"
-              label="POTENSI TAKE OVER"
-              edge="var(--color-primary), var(--color-chart-interest)"
-              value={
-                opp?.cheaperProgramCount
-                  ? `−${rupiahShort(opp.bestMonthlySaving)}`
-                  : "Belum ada"
-              }
-              unit={opp?.cheaperProgramCount ? "/ bulan" : ""}
-              tone={opp?.cheaperProgramCount ? "ok" : "mute"}
-              note={
-                opp?.cheaperProgramCount
-                  ? `${opp.comparedTo === "floating_estimate" ? "Dibanding estimasi cicilan floating" : "Dibanding cicilan sekarang"} · ${opp.bestBankName} ${percentBps(opp.bestFixedRateBps)} fixed ${opp.bestFixedMonths / 12} th${opp.bestBreakEvenMonth ? ` · break-even ${opp.bestBreakEvenMonth} bulan` : ""}`
-                  : "Belum ada program yang lebih hemat setelah biaya pindah, berdasarkan katalog terbaru."
-              }
-            />
-            <OpportunityTile
-              to={
-                opp?.maxGrossTopup != null
-                  ? "/explore"
-                  : "/my-kpr/property?edit=1"
-              }
-              label="POTENSI REFINANCING"
-              edge="var(--color-success-strong), color-mix(in srgb, var(--color-success-strong) 30%, white)"
-              value={
-                opp?.maxGrossTopup != null
-                  ? rupiahShort(opp.maxGrossTopup)
-                  : "Belum dapat dihitung"
-              }
-              unit={opp?.maxGrossTopup != null ? "dana kotor maksimum" : ""}
-              tone={opp?.maxGrossTopup != null ? "default" : "warn"}
-              note={
-                opp?.maxGrossTopup != null
-                  ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% − sisa pokok ${rupiahShort(m.outstandingPrincipal)}`
-                  : "Lengkapi nilai properti untuk melihat potensi dana cair."
-              }
-            />
-          </div>
-        )}
-        {!oppLocked && (
-          <div className="flex flex-col gap-3 md:self-end">
-            <Button
-              className="w-full md:w-fit"
-              onClick={() => navigate("/explore")}
-            >
-              Eksplorasi Pilihan
-              <ArrowRightIcon aria-hidden />
-            </Button>
-          </div>
-        )}
-      </section>
-
-      {isFloating && (
-        <HeroCard className="grid grid-cols-1 items-center gap-7 md:grid-cols-2">
-          <div className="flex flex-col gap-3.5">
-            <Chip tone="glass">Bunga floating aktif</Chip>
-            <h2 className="text-2xl leading-8 font-extrabold sm:text-[26px]">
-              KPR kamu sekarang menggunakan bunga floating
-            </h2>
-            <Button
-              variant="inverse"
-              className="w-fit"
-              onClick={() => navigate("/explore")}
-            >
-              Bandingkan Pilihan
-            </Button>
-          </div>
-          <dl className="flex flex-col rounded-[18px] bg-white/12 px-5 py-2">
-            {[
-              ["Bunga saat ini", percentBps(m.currentRateBps)],
-              ["Cicilan saat ini", rupiah(m.currentPayment)],
-              ...(m.previousFixedPayment
-                ? [
-                    [
-                      "Perubahan dari fixed",
-                      `${signedRupiah(m.currentPayment - m.previousFixedPayment)}/bln`,
-                    ],
-                  ]
-                : []),
-            ].map(([k, v]) => (
-              <div
-                key={k}
-                className="flex justify-between gap-4 border-b border-white/15 py-3 text-sm last:border-b-0"
-              >
-                <dt className="text-white/80">{k}</dt>
-                <dd className="font-extrabold">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </HeroCard>
-      )}
-
-      {/* Health → Next Payment → Amortisasi → KPR → Agenda on one column; two columns on desktop. */}
+      {/* Desktop: two independent columns so cards stack without row gaps. Mobile: one column —
+          Peluang, floating, Health keep DOM order (order 0), then the numbered panels follow. */}
       <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:items-start">
         <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
-          {healthLocked ? (
-            <Panel className="order-1 xl:order-none">
-              <span className="flex items-center gap-2 text-[13px] font-extrabold text-ink-3">
-                <LockIcon className="size-4" aria-hidden />
-                KPR Health
-              </span>
-              <p className="text-sm leading-[21px] text-ink-2">
-                Isi penghasilan bulanan untuk membuka KPR Health dan melihat
-                rasio beban cicilan kamu.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={() => setAskIncome(true)}
-              >
-                Isi Penghasilan
-              </Button>
-            </Panel>
-          ) : (
-            <Panel className="order-1 flex-row items-center gap-6 xl:order-none">
-              <HealthRing
-                health={d.health}
-                size={d.mode === "normal" ? 112 : 92}
-              />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <span className="text-[13px] font-extrabold text-ink-3">
-                  KPR Health
-                </span>
-                <Chip tone={d.health.tone}>{d.health.label}</Chip>
-                <p className="text-sm leading-[21px] text-ink-2">
-                  {d.health.score >= 80
-                    ? "Kondisi KPR kamu sehat."
-                    : HEALTH_SENTENCE[weakest?.key]}
-                </p>
-                {d.health.partial && (
-                  <p className="text-xs text-warning-text">
-                    Skor parsial — sebagian komponen belum dapat dihitung.
-                  </p>
-                )}
-                <Link
-                  to="/my-kpr/health"
-                  className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary"
+          <section
+            className="grid grid-cols-1 gap-4 rounded-card border border-[#cfdcf3] bg-[#f3f7fe] p-6 shadow-card md:gap-x-7 md:max-xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]"
+            aria-labelledby="opp-title"
+          >
+            <div className="flex flex-col gap-4">
+              <IconBox icon={PiSparkleFill} size="lg" tone="solid" />
+              <div className="flex flex-col gap-1.5">
+                <h2
+                  id="opp-title"
+                  className="text-xl leading-[27px] font-extrabold text-pretty"
                 >
-                  Lihat penyebab
-                  <ArrowRightIcon className="size-[15px]" aria-hidden />
-                </Link>
+                  {!oppLocked && opp?.cheaperProgramCount
+                    ? "Ada ruang untuk cicilan lebih ringan."
+                    : "Pantau peluang untuk KPR kamu."}
+                </h2>
+                <p className="text-sm leading-[21px] text-ink-3">
+                  Potensi dari KPR kamu saat ini. Lihat biaya pindah dan
+                  break-even, bukan hanya bunga promo.
+                </p>
               </div>
-            </Panel>
+            </div>
+            {oppLocked ? (
+              <div className="flex flex-col items-start gap-3 rounded-xl bg-card px-4 py-3.5 md:max-xl:row-span-2">
+                <span className="flex items-center gap-2 text-xs font-extrabold tracking-[0.4px] text-primary">
+                  <LockIcon className="size-4" aria-hidden />
+                  POTENSI TAKE OVER & REFINANCING
+                </span>
+                <p className="text-sm leading-[21px] text-ink-2">
+                  Lengkapi {oppMissing} untuk melihat potensi cicilan lebih
+                  ringan dan dana cair dari KPR kamu.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    healthLocked ? setAskIncome(true) : setAskProperty(true)
+                  }
+                >
+                  {healthLocked ? "Isi Penghasilan" : "Isi Nilai Properti"}
+                </Button>
+              </div>
+            ) : exploreLoading && !explore ? (
+              <div
+                className="flex flex-col gap-2 md:max-xl:row-span-2"
+                aria-busy="true"
+              >
+                <Skeleton className="h-24 rounded-xl" />
+                <Skeleton className="h-24 rounded-xl" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 md:max-xl:row-span-2">
+                <OpportunityTile
+                  to="/explore"
+                  label="POTENSI TAKE OVER"
+                  hasOpportunity={!!opp?.cheaperProgramCount}
+                  value={
+                    opp?.cheaperProgramCount
+                      ? `−${rupiahShort(opp.bestMonthlySaving)}`
+                      : "Belum ada"
+                  }
+                  unit={opp?.cheaperProgramCount ? "/ bulan" : ""}
+                  tone={opp?.cheaperProgramCount ? "ok" : "mute"}
+                  note={
+                    opp?.cheaperProgramCount
+                      ? `${opp.comparedTo === "floating_estimate" ? "Dibanding estimasi cicilan floating" : "Dibanding cicilan sekarang"} · ${opp.bestBankName} ${percentBps(opp.bestFixedRateBps)} fixed ${opp.bestFixedMonths / 12} th${opp.bestBreakEvenMonth ? ` · break-even ${opp.bestBreakEvenMonth} bulan` : ""}`
+                      : "Belum ada program yang lebih hemat setelah biaya pindah, berdasarkan katalog terbaru."
+                  }
+                />
+                <OpportunityTile
+                  to={
+                    opp?.maxGrossTopup != null
+                      ? "/explore"
+                      : "/my-kpr/property?edit=1"
+                  }
+                  label="POTENSI REFINANCING"
+                  hasOpportunity={opp?.maxGrossTopup != null}
+                  value={
+                    opp?.maxGrossTopup != null
+                      ? rupiahShort(opp.maxGrossTopup)
+                      : "Belum dapat dihitung"
+                  }
+                  unit={opp?.maxGrossTopup != null ? "dana kotor maksimum" : ""}
+                  tone={opp?.maxGrossTopup != null ? "default" : "warn"}
+                  note={
+                    opp?.maxGrossTopup != null
+                      ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% − sisa pokok ${rupiahShort(m.outstandingPrincipal)}`
+                      : "Lengkapi nilai properti untuk melihat potensi dana cair."
+                  }
+                />
+              </div>
+            )}
+            {!oppLocked && (
+              <div className="flex flex-col gap-3 md:max-xl:self-end">
+                <Button
+                  className="w-full md:w-fit"
+                  onClick={() => navigate("/explore")}
+                >
+                  Eksplorasi Pilihan
+                  <ArrowRightIcon aria-hidden />
+                </Button>
+              </div>
+            )}
+          </section>
+          {isFloating && (
+            <HeroCard className="grid grid-cols-1 items-center gap-7 md:max-xl:grid-cols-2">
+              <div className="flex flex-col gap-3.5">
+                <Chip tone="glass">Bunga floating aktif</Chip>
+                <h2 className="text-2xl leading-8 font-extrabold sm:text-[26px]">
+                  KPR kamu sekarang menggunakan bunga floating
+                </h2>
+                <Button
+                  variant="inverse"
+                  className="w-fit"
+                  onClick={() => navigate("/explore")}
+                >
+                  Bandingkan Pilihan
+                </Button>
+              </div>
+              <dl className="flex flex-col rounded-[18px] bg-white/12 px-5 py-2">
+                {[
+                  ["Bunga saat ini", percentBps(m.currentRateBps)],
+                  ["Cicilan saat ini", rupiah(m.currentPayment)],
+                  ...(m.previousFixedPayment
+                    ? [
+                        [
+                          "Perubahan dari fixed",
+                          `${signedRupiah(m.currentPayment - m.previousFixedPayment)}/bln`,
+                        ],
+                      ]
+                    : []),
+                ].map(([k, v]) => (
+                  <div
+                    key={k}
+                    className="flex justify-between gap-4 border-b border-white/15 py-3 text-sm last:border-b-0"
+                  >
+                    <dt className="text-white/80">{k}</dt>
+                    <dd className="font-extrabold">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </HeroCard>
           )}
-
           <Panel className="order-4 xl:order-none">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-extrabold">KPR Saya</h2>
@@ -587,6 +531,56 @@ export function MonitoringDashboard({
         </div>
 
         <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
+          {healthLocked ? (
+            <Panel>
+              <span className="flex items-center gap-2 text-[13px] font-extrabold text-ink-3">
+                <LockIcon className="size-4" aria-hidden />
+                KPR Health
+              </span>
+              <p className="text-sm leading-[21px] text-ink-2">
+                Isi penghasilan bulanan untuk membuka KPR Health dan melihat
+                rasio beban cicilan kamu.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => setAskIncome(true)}
+              >
+                Isi Penghasilan
+              </Button>
+            </Panel>
+          ) : (
+            <Panel className="flex-row items-center gap-6">
+              <HealthRing
+                health={d.health}
+                size={d.mode === "normal" ? 112 : 92}
+              />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <span className="text-[13px] font-extrabold text-ink-3">
+                  KPR Health
+                </span>
+                <Chip tone={d.health.tone}>{d.health.label}</Chip>
+                <p className="text-sm leading-[21px] text-ink-2">
+                  {d.health.score >= 80
+                    ? "Kondisi KPR kamu sehat."
+                    : HEALTH_SENTENCE[weakest?.key]}
+                </p>
+                {d.health.partial && (
+                  <p className="text-xs text-warning-text">
+                    Skor parsial — sebagian komponen belum dapat dihitung.
+                  </p>
+                )}
+                <Link
+                  to="/my-kpr/health"
+                  className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary"
+                >
+                  Lihat penyebab
+                  <ArrowRightIcon className="size-[15px]" aria-hidden />
+                </Link>
+              </div>
+            </Panel>
+          )}
           <Panel
             className={cn(
               "order-2 gap-2.5 xl:order-none",
@@ -785,18 +779,33 @@ export function MonitoringDashboard({
   );
 }
 
-function OpportunityTile({ to, label, value, unit, note, tone, edge }) {
-  // Gradient ring: card fill paints the padding box, the edge gradient shows through the transparent border.
+function OpportunityTile({
+  to,
+  label,
+  value,
+  unit,
+  note,
+  tone,
+  hasOpportunity,
+}) {
+  // A real opportunity gets the green spotlight; an empty one stays muted so the two read differently at a glance.
   return (
     <Link
       to={to}
-      className="flex flex-col gap-1.5 rounded-xl border-[1.5px] border-transparent px-4 py-3.5 transition-shadow hover:shadow-card"
-      style={{
-        background: `linear-gradient(var(--color-card) 0 0) padding-box, linear-gradient(135deg, ${edge}) border-box`,
-      }}
+      className={cn(
+        "flex flex-col gap-1.5 rounded-xl border px-4 py-3.5 transition duration-200",
+        hasOpportunity
+          ? "opp-gradient border-white/30 text-white shadow-opp hover:-translate-y-0.5 hover:shadow-opp-hover active:-translate-y-0.5 active:shadow-opp-hover"
+          : "border-opp-mute-border bg-opp-mute hover:shadow-card",
+      )}
     >
       <span className="flex w-full items-center justify-between gap-2">
-        <span className="text-xs font-extrabold tracking-[0.4px] text-primary">
+        <span
+          className={cn(
+            "text-xs font-extrabold tracking-[0.4px]",
+            hasOpportunity ? "text-white/90" : "text-primary",
+          )}
+        >
           {label}
         </span>
         <ChevronRightIcon className="size-4" aria-hidden />
@@ -805,16 +814,31 @@ function OpportunityTile({ to, label, value, unit, note, tone, edge }) {
         <span
           className={cn(
             "text-[22px] font-extrabold tracking-[-0.3px]",
-            tone === "ok" && "text-success-strong",
-            tone === "warn" && "text-warning-text",
-            tone === "mute" && "text-ink-3",
+            !hasOpportunity && tone === "warn" && "text-warning-text",
+            !hasOpportunity && tone === "mute" && "text-ink-3",
           )}
         >
           {value}
         </span>
-        {unit && <span className="text-[13px] text-ink-3">{unit}</span>}
+        {unit && (
+          <span
+            className={cn(
+              "text-[13px]",
+              hasOpportunity ? "text-white/85" : "text-ink-3",
+            )}
+          >
+            {unit}
+          </span>
+        )}
       </span>
-      <span className="text-[13px] leading-[19px] text-ink-3">{note}</span>
+      <span
+        className={cn(
+          "text-[13px] leading-[19px]",
+          hasOpportunity ? "text-white/85" : "text-ink-3",
+        )}
+      >
+        {note}
+      </span>
     </Link>
   );
 }

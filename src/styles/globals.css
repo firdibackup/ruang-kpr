@@ -48,6 +48,10 @@
   --color-danger-bg: #fdecee;
   --color-danger-border: #f5c2c7;
   --color-chart-interest: #9db6e3;
+  --color-opp: #0f9d6b;
+  --color-opp-light: #22c58b;
+  --color-opp-mute: #f1f8f5;
+  --color-opp-mute-border: #cfe5db;
 
   --radius-sm: 8px;
   --radius-md: 10px;
@@ -59,6 +63,8 @@
 
   --shadow-card: 0 6px 24px #0b1b3314;
   --shadow-pop: 0 24px 60px #0b1b3340;
+  --shadow-opp: 0 6px 20px #0f9d6b40;
+  --shadow-opp-hover: 0 10px 28px #0f9d6b59;
 }
 
 :root {
@@ -121,6 +127,13 @@
   mask-composite: intersect;
   mix-blend-mode: luminosity;
   opacity: 0.22;
+}
+
+/* Opportunity tile with a real value: green spotlight, centre glow capped at 25% so white text stays legible. */
+@utility opp-gradient {
+  background:
+    radial-gradient(circle at 50% 50%, #ffffff40, transparent 60%),
+    linear-gradient(135deg, var(--color-opp) 0%, var(--color-opp-light) 50%, var(--color-opp) 100%);
 }
 
 @utility tabular {
