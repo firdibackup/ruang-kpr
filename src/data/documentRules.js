@@ -4,6 +4,9 @@
 export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'application/pdf']
 export const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|pdf)$/i
 export const MAX_FILE_BYTES = 5 * 1024 * 1024
+// ponytail: type/size checks are off while production has no demo mode ("Isi contoh" is DEV-only),
+// so any file can be uploaded. Set back to true to restore the JPG/PNG/PDF · 5MB rule (UploadRow + mockApi).
+export const ENFORCE_FILE_RULES = false
 
 export const DOC_LABELS = {
   ktp: 'KTP',

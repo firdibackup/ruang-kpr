@@ -7,7 +7,7 @@ import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
 import { ApiError } from './apiError'
 import { ARTICLES } from './articles'
 import { BANK_PRODUCTS } from './catalog'
-import { ACCEPTED_EXTENSIONS, DOC_LABELS, MAX_FILE_BYTES, requiredDocuments } from './documentRules'
+import { ACCEPTED_EXTENSIONS, DOC_LABELS, ENFORCE_FILE_RULES, MAX_FILE_BYTES, requiredDocuments } from './documentRules'
 import { loadDb, resetDb, saveDb } from './mockDb'
 import { DEFAULT_REMINDERS, SCENARIOS } from './seed'
 
@@ -479,8 +479,8 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       // Upload progress happens before the transaction so parallel uploads never overwrite each other.
       uploadDocument: async (id, { documentType, file }, { onProgress } = {}) => {
         if (latencyMs) await sleep(latencyMs / 2)
-        if (!ACCEPTED_EXTENSIONS.test(file.name)) fail('FILE_TYPE_UNSUPPORTED', 'Format tidak didukung. Gunakan JPG, PNG, atau PDF.', 415)
-        if (file.size > MAX_FILE_BYTES) fail('FILE_TOO_LARGE', 'Ukuran file lebih dari 5MB. Kompres dulu, lalu coba lagi.', 413)
+        if (ENFORCE_FILE_RULES && !ACCEPTED_EXTENSIONS.test(file.name)) fail('FILE_TYPE_UNSUPPORTED', 'Format tidak didukung. Gunakan JPG, PNG, atau PDF.', 415)
+        if (ENFORCE_FILE_RULES && file.size > MAX_FILE_BYTES) fail('FILE_TOO_LARGE', 'Ukuran file lebih dari 5MB. Kompres dulu, lalu coba lagi.', 413)
         for (const pct of [20, 45, 70, 90]) {
           if (latencyMs) await sleep(Math.max(80, latencyMs / 2))
           onProgress?.(pct)
