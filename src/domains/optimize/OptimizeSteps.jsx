@@ -89,7 +89,7 @@ import { takeoverScreenOf } from "@/domains/applications/meta";
 import {
   HEALTH_SENTENCE,
   HealthRing,
-} from "@/domains/home/MonitoringDashboard";
+} from "@/domains/home/dashboardWidgets";
 import { applicationHealth, dtiTone, goalConditions } from "./insights";
 import { Aside, OptimizeHeader, modeName, useOptimize } from "./shared";
 import { TakeoverMilestone } from "./TakeoverMilestone";
@@ -502,6 +502,7 @@ function EmploymentStep({ app, setApp, next, fromReview }) {
           <SelectField
             label="Jenis pekerjaan"
             options={OCCUPATIONS}
+            other="Tulis jenis pekerjaan"
             span
             {...form.bind("occupation")}
           />

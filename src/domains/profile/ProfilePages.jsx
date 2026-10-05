@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { BellIcon, BriefcaseIcon, LogOutIcon, PencilIcon, ShieldCheckIcon, UserIcon } from 'lucide-react'
+import { BellIcon, BriefcaseIcon, LogOutIcon, PencilIcon, ShieldCheckIcon, Trash2Icon, UserIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { useForm, useResource } from '@/lib/hooks'
 import { GENDERS, MARITAL, OCCUPATIONS, dateLong, initials, labelOf, maskNik, rupiah, toMoney } from '@/lib/format'
@@ -12,6 +12,7 @@ import { ConfirmDialog, FormDialog, UnsavedChangesGuard } from '@/components/sha
 import { WizardProgress } from '@/components/shared/progress'
 import { Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner, SummaryRows } from '@/components/shared/ui'
 import { useSession } from '@/domains/session/SessionProvider'
+import { IN_PROCESS } from '@/domains/home/selectHomeState'
 import { ReminderSettingsForm, reminderSummary } from '@/domains/mortgages/ReminderSettingsForm'
 import { filledOnly, validateReminders } from '@/domains/mortgages/validation'
 import { validateEmploymentBasic } from '@/domains/optimize/validation'
@@ -19,15 +20,19 @@ import { profileFormValues, validatePersonal } from '@/domains/applications/vali
 
 export function ProfilePage() {
   const navigate = useNavigate()
-  const { logout } = useSession()
+  const { logout, refresh } = useSession()
   const { data: snap, error, reload } = useResource(() => api.dashboard.getSnapshot())
   const [confirm, setConfirm] = useState(false)
+  const [del, setDel] = useState(false)
+  const [agreed, setAgreed] = useState(false)
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   const p = snap.profile ?? {}
   const f = snap.finance ?? {}
   const m = snap.mortgages.find((x) => x.status === 'active')
   const r = m ? reminderSummary(m.reminders, m.currentRateType === 'fixed' && m.fixedUntil > snap.clock) : null
   const incomplete = !p.nik || !p.birthDate || !p.occupation
+  // Same rule as auth.deleteAccount: an application at the bank can't lose its account.
+  const blocked = snap.applications.some((a) => IN_PROCESS.includes(a.status))
 
   return (
     <>
@@ -111,10 +116,24 @@ export function ProfilePage() {
                 {c.type === 'terms' ? 'Syarat & Ketentuan' : 'Kebijakan Privasi'} v{c.version} · disetujui {dateLong(c.acceptedAt)}
               </span>
             ))}
-            <Button variant="neutral" size="md" className="mt-2 w-fit text-danger" onClick={() => setConfirm(true)}>
-              <LogOutIcon aria-hidden />
-              Keluar
-            </Button>
+            <div className="mt-2 flex flex-wrap gap-2.5">
+              <Button variant="neutral" size="md" className="w-fit text-danger" onClick={() => setConfirm(true)}>
+                <LogOutIcon aria-hidden />
+                Keluar
+              </Button>
+              <Button
+                variant="destructive-soft"
+                size="md"
+                className="w-fit"
+                onClick={() => {
+                  setAgreed(false)
+                  setDel(true)
+                }}
+              >
+                <Trash2Icon aria-hidden />
+                Hapus Akun
+              </Button>
+            </div>
           </Panel>
         </div>
       </div>
@@ -130,6 +149,41 @@ export function ProfilePage() {
           navigate('/register', { replace: true })
         }}
       />
+      {blocked ? (
+        <ConfirmDialog
+          open={del}
+          onOpenChange={setDel}
+          destructive={false}
+          title="Akun belum bisa dihapus"
+          body="Masih ada pengajuan yang sedang diproses bank. Batalkan atau tunggu sampai selesai sebelum menghapus akun."
+          confirmLabel="Lihat Pengajuan"
+          onConfirm={() => navigate('/my-kpr/application')}
+        />
+      ) : (
+        <ConfirmDialog
+          open={del}
+          onOpenChange={setDel}
+          title="Hapus akun RuangKPR?"
+          body="Semua data kamu di RuangKPR akan dihapus permanen dan tidak bisa dikembalikan:"
+          confirmLabel="Hapus Akun"
+          confirmDisabled={!agreed}
+          onConfirm={async () => {
+            await api.auth.deleteAccount()
+            await refresh()
+            toast('Akun kamu sudah dihapus.')
+            navigate('/register', { replace: true })
+          }}
+        >
+          <ul className="-mt-2 list-disc pl-5 text-sm leading-[21px] text-ink-3">
+            <li>Profil, data pribadi & penghasilan</li>
+            <li>KPR yang dipantau & pengaturan reminder</li>
+            <li>Draft pengajuan & hasil simulasi</li>
+            <li>Riwayat di Activity</li>
+          </ul>
+          <Disclaimer>Pengajuan yang sudah dikirim ke bank tetap tersimpan di bank sesuai ketentuan bank.</Disclaimer>
+          <CheckboxField label="Saya mengerti data ini tidak bisa dikembalikan." name="deleteConsent" checked={agreed} onChange={setAgreed} />
+        </ConfirmDialog>
+      )}
     </>
   )
 }
@@ -175,7 +229,7 @@ function ProfileForm({ snap }) {
     try {
       await api.profile.update({
         fullName: x.fullName.trim(), nik: x.nik, birthPlace: x.birthPlace.trim(), birthDate: x.birthDate, gender: x.gender, maritalStatus: x.maritalStatus, address: x.address.trim(), phone: x.phone.replace(/[\s-]/g, ''), email: x.email.trim(),
-        occupation: x.occupation, companyName: x.companyName.trim(), jobTitle: x.jobTitle.trim(), workYears: Number(x.workYears), workMonths: Number(x.workMonths),
+        occupation: x.occupation.trim(), companyName: x.companyName.trim(), jobTitle: x.jobTitle.trim(), workYears: Number(x.workYears), workMonths: Number(x.workMonths),
         finance: {
           monthlyIncome: toMoney(x.monthlyIncome), jointIncome: x.jointIncome, partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
           vehicleDebt: toMoney(x.vehicleDebt), cardDebt: toMoney(x.cardDebt), otherDebt: toMoney(x.otherDebt),
@@ -264,7 +318,7 @@ export function JobFields({ form, required = [] }) {
   const req = (k) => required.includes(k)
   return (
     <>
-      <SelectField label="Jenis pekerjaan" required={req('occupation')} options={OCCUPATIONS} span {...form.bind('occupation')} />
+      <SelectField label="Jenis pekerjaan" required={req('occupation')} options={OCCUPATIONS} other="Tulis jenis pekerjaan" span {...form.bind('occupation')} />
       <TextField label="Nama perusahaan / usaha" required={req('companyName')} {...form.bind('companyName')} />
       <TextField label="Jabatan / bidang usaha" required={req('jobTitle')} {...form.bind('jobTitle')} />
       <NumberField label="Lama bekerja" required={req('workYears')} suffix="tahun" {...form.bind('workYears')} />

@@ -867,6 +867,8 @@ Urutan:
 
 No charts on Home.
 
+> Catatan 2026-10-05: aturan ini berlaku untuk **susunan default**. Grafik (Proyeksi Sisa Pokok, Dampak Floating, Komposisi Cicilan, Pokok vs Bunga per Tahun) hanya tersedia sebagai widget opsional yang ditambahkan user lewat *Atur Dashboard → Tambah widget*. Lihat `docs/superpowers/specs/2026-10-05-widget-catalog-design.md`.
+
 ## 11.2 KPR Health
 
 Composite score MVP:

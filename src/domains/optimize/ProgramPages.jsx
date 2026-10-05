@@ -12,7 +12,7 @@ import { Slider } from '@/domains/applications/PrimaryCompare'
 import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, HeroCard, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
 import { takeoverScreenOf } from '@/domains/applications/meta'
-import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/MonitoringDashboard'
+import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/dashboardWidgets'
 import { applicationHealth, simulationTeaser } from './insights'
 import { OptimizeHeader, modeName, useOptimize } from './shared'
 

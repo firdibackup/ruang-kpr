@@ -4,37 +4,18 @@ import { toast } from "sonner";
 import {
   ArrowLeftRightIcon,
   ArrowRightIcon,
-  CalendarClockIcon,
-  CalendarIcon,
   ChevronRightIcon,
-  CircleCheckIcon,
-  ClockIcon,
-  HouseIcon,
   LandmarkIcon,
-  LockIcon,
   PercentIcon,
-  RefreshCwIcon,
   TriangleAlertIcon,
-  WalletIcon,
 } from "lucide-react";
-import { PiSparkleFill } from "react-icons/pi";
-import { api } from "@/data/api";
-import { useResource } from "@/lib/hooks";
 import {
   daysLabel,
-  monthName,
-  monthYear,
   percentBps,
   rupiah,
-  rupiahShort,
   signedRupiah,
-  tenorLabel,
-  dateLong,
   dateShort,
-  labelOf,
-  CITIES,
 } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { FormDialog } from "@/components/shared/dialogs";
 import { MarkPaidDialog, PropertyDialog } from "@/domains/mortgages/MyKprTabs";
@@ -44,113 +25,28 @@ import {
   Disclaimer,
   EstimateTag,
   HeroCard,
-  IconBox,
   Notice,
-  Panel,
-  ProgressBar,
-  Skeleton,
   SummaryRows,
 } from "@/components/shared/ui";
-import { progressGap, rateTypeLabel } from "@/domains/mortgages/setupMeta";
-
-export const HEALTH_SENTENCE = {
-  dti: "Rasio cicilan kamu agak tinggi.",
-  ltv: "Porsi pinjaman terhadap nilai rumah masih tinggi.",
-  rate: "Masa fixed segera berakhir.",
-  progress: "Pokok yang sudah lunas masih sedikit.",
-};
-const TONE_COLOR = { ok: "#1B8A5A", warn: "#E0A100", bad: "#DC1C2E" };
-
-export function HealthRing({ health, size = 112 }) {
-  const color = TONE_COLOR[health.tone];
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full"
-      style={{
-        width: size,
-        height: size,
-        background: `conic-gradient(${color} 0 ${health.score}%, #EEF1F6 ${health.score}% 100%)`,
-      }}
-      role="img"
-      aria-label={`KPR Health ${health.score} dari 100${health.partial ? ", skor parsial" : ""}`}
-    >
-      <div className="flex size-[78%] flex-col items-center justify-center rounded-full bg-card">
-        <span className="text-[30px] leading-none font-extrabold">
-          {health.score}
-        </span>
-        <span className="text-xs font-semibold text-muted-foreground">
-          /100
-        </span>
-      </div>
-    </div>
-  );
-}
+import { WidgetBoard } from "./WidgetBoard";
 
 export function MonitoringDashboard({
   mortgage: m,
   derived: d,
   clock,
+  simulation,
+  layout,
+  arranging,
+  onArrangingChange,
   onChanged,
 }) {
   const navigate = useNavigate();
-  const { data: explore, loading: exploreLoading } = useResource(
-    () => api.explore.get(),
-    [m.id, m.version],
-  );
   const [repricing, setRepricing] = useState(false);
   const [marking, setMarking] = useState(false);
   const [askIncome, setAskIncome] = useState(false);
   const [askProperty, setAskProperty] = useState(false);
-  // Monitoring needs only the KPR data; Health unlocks with penghasilan, Peluang also needs the property value.
-  const healthLocked = !(d.income > 0);
-  const oppLocked = healthLocked || d.partialProperty;
-  const oppMissing = [
-    healthLocked && "penghasilan",
-    d.partialProperty && "nilai properti",
-  ]
-    .filter(Boolean)
-    .join(" dan ");
   const fi = d.floatingImpact;
-  const weakest = [...d.health.components]
-    .filter((c) => c.score !== null)
-    .sort((a, b) => a.score - b.score)[0];
-  const opp = explore?.opportunity;
-  const isFloating = d.mode === "floating";
   const pay = d.paymentAlert;
-  const upcoming =
-    d.schedule?.rows.filter((r) => r.dueDate >= d.nextDue).slice(0, 3) ?? [];
-
-  const agenda = [
-    {
-      icon: WalletIcon,
-      tone: "primary",
-      t: `Siapkan cicilan ${monthName(d.nextDue)}`,
-      s: `${dateShort(d.nextDue)} · Reminder aktif`,
-      to: "/my-kpr/payment",
-    },
-    isFloating
-      ? {
-          icon: RefreshCwIcon,
-          tone: "warn",
-          t: "Cek opsi repricing atau Take Over",
-          s: "Bunga floating aktif · bandingkan opsi",
-          to: "/explore",
-        }
-      : d.daysUntilFixedEnd != null && {
-          icon: ClockIcon,
-          tone: "warn",
-          t: "Evaluasi sebelum floating",
-          s: `${d.daysUntilFixedEnd} hari menuju akhir fixed`,
-          to: "/my-kpr/rate",
-        },
-    d.partialProperty && {
-      icon: HouseIcon,
-      tone: "warn",
-      t: "Lengkapi nilai properti",
-      s: "Untuk hitung equity dan refinancing",
-      to: "/my-kpr/property",
-    },
-  ].filter(Boolean);
 
   return (
     <div className="flex flex-col gap-5">
@@ -273,458 +169,62 @@ export function MonitoringDashboard({
         </Notice>
       )}
 
-      {/* Desktop: two independent columns so cards stack without row gaps. Mobile: one column —
-          Peluang, floating, Health keep DOM order (order 0), then the numbered panels follow. */}
-      <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:items-start">
-        <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
-          <section
-            className="grid grid-cols-1 gap-4 rounded-card border border-[#cfdcf3] bg-[#f3f7fe] p-6 shadow-card md:gap-x-7 md:max-xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]"
-            aria-labelledby="opp-title"
-          >
-            <div className="flex flex-col gap-4">
-              <IconBox icon={PiSparkleFill} size="lg" tone="solid" />
-              <div className="flex flex-col gap-1.5">
-                <h2
-                  id="opp-title"
-                  className="text-xl leading-[27px] font-extrabold text-pretty"
-                >
-                  {!oppLocked && opp?.cheaperProgramCount
-                    ? "Ada ruang untuk cicilan lebih ringan."
-                    : "Pantau peluang untuk KPR kamu."}
-                </h2>
-                <p className="text-sm leading-[21px] text-ink-3">
-                  Potensi dari KPR kamu saat ini. Lihat biaya pindah dan
-                  break-even, bukan hanya bunga promo.
-                </p>
-              </div>
-            </div>
-            {oppLocked ? (
-              <div className="flex flex-col items-start gap-3 rounded-xl bg-card px-4 py-3.5 md:max-xl:row-span-2">
-                <span className="flex items-center gap-2 text-xs font-extrabold tracking-[0.4px] text-primary">
-                  <LockIcon className="size-4" aria-hidden />
-                  POTENSI TAKE OVER & REFINANCING
-                </span>
-                <p className="text-sm leading-[21px] text-ink-2">
-                  Lengkapi {oppMissing} untuk melihat potensi cicilan lebih
-                  ringan dan dana cair dari KPR kamu.
-                </p>
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    healthLocked ? setAskIncome(true) : setAskProperty(true)
-                  }
-                >
-                  {healthLocked ? "Isi Penghasilan" : "Isi Nilai Properti"}
-                </Button>
-              </div>
-            ) : exploreLoading && !explore ? (
-              <div
-                className="flex flex-col gap-2 md:max-xl:row-span-2"
-                aria-busy="true"
-              >
-                <Skeleton className="h-24 rounded-xl" />
-                <Skeleton className="h-24 rounded-xl" />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2 md:max-xl:row-span-2">
-                <OpportunityTile
-                  to="/explore"
-                  label="POTENSI TAKE OVER"
-                  hasOpportunity={!!opp?.cheaperProgramCount}
-                  value={
-                    opp?.cheaperProgramCount
-                      ? `−${rupiahShort(opp.bestMonthlySaving)}`
-                      : "Belum ada"
-                  }
-                  unit={opp?.cheaperProgramCount ? "/ bulan" : ""}
-                  tone={opp?.cheaperProgramCount ? "ok" : "mute"}
-                  note={
-                    opp?.cheaperProgramCount
-                      ? `${opp.comparedTo === "floating_estimate" ? "Dibanding estimasi cicilan floating" : "Dibanding cicilan sekarang"} · ${opp.bestBankName} ${percentBps(opp.bestFixedRateBps)} fixed ${opp.bestFixedMonths / 12} th${opp.bestBreakEvenMonth ? ` · break-even ${opp.bestBreakEvenMonth} bulan` : ""}`
-                      : "Belum ada program yang lebih hemat setelah biaya pindah, berdasarkan katalog terbaru."
-                  }
-                />
-                <OpportunityTile
-                  to={
-                    opp?.maxGrossTopup != null
-                      ? "/explore"
-                      : "/my-kpr/property?edit=1"
-                  }
-                  label="POTENSI REFINANCING"
-                  hasOpportunity={opp?.maxGrossTopup != null}
-                  value={
-                    opp?.maxGrossTopup != null
-                      ? rupiahShort(opp.maxGrossTopup)
-                      : "Belum dapat dihitung"
-                  }
-                  unit={opp?.maxGrossTopup != null ? "dana kotor maksimum" : ""}
-                  tone={opp?.maxGrossTopup != null ? "default" : "warn"}
-                  note={
-                    opp?.maxGrossTopup != null
-                      ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% − sisa pokok ${rupiahShort(m.outstandingPrincipal)}`
-                      : "Lengkapi nilai properti untuk melihat potensi dana cair."
-                  }
-                />
-              </div>
-            )}
-            {!oppLocked && (
-              <div className="flex flex-col gap-3 md:max-xl:self-end">
-                <Button
-                  className="w-full md:w-fit"
-                  onClick={() => navigate("/explore")}
-                >
-                  Eksplorasi Pilihan
-                  <ArrowRightIcon aria-hidden />
-                </Button>
-              </div>
-            )}
-          </section>
-          {isFloating && (
-            <HeroCard className="grid grid-cols-1 items-center gap-7 md:max-xl:grid-cols-2">
-              <div className="flex flex-col gap-3.5">
-                <Chip tone="glass">Bunga floating aktif</Chip>
-                <h2 className="text-2xl leading-8 font-extrabold sm:text-[26px]">
-                  KPR kamu sekarang menggunakan bunga floating
-                </h2>
-                <Button
-                  variant="inverse"
-                  className="w-fit"
-                  onClick={() => navigate("/explore")}
-                >
-                  Bandingkan Pilihan
-                </Button>
-              </div>
-              <dl className="flex flex-col rounded-[18px] bg-white/12 px-5 py-2">
-                {[
-                  ["Bunga saat ini", percentBps(m.currentRateBps)],
-                  ["Cicilan saat ini", rupiah(m.currentPayment)],
-                  ...(m.previousFixedPayment
-                    ? [
-                        [
-                          "Perubahan dari fixed",
-                          `${signedRupiah(m.currentPayment - m.previousFixedPayment)}/bln`,
-                        ],
-                      ]
-                    : []),
-                ].map(([k, v]) => (
-                  <div
-                    key={k}
-                    className="flex justify-between gap-4 border-b border-white/15 py-3 text-sm last:border-b-0"
-                  >
-                    <dt className="text-white/80">{k}</dt>
-                    <dd className="font-extrabold">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </HeroCard>
-          )}
-          <Panel className="order-4 xl:order-none">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold">KPR Saya</h2>
-              <Chip tone="ok">Aktif</Chip>
-            </div>
-            <div className="flex items-center gap-3.5">
-              <span
-                className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-secondary text-base font-extrabold tracking-[-0.3px] text-primary italic"
-                aria-hidden
-              >
-                {m.bankName.replace(/^Bank\s+/i, "").slice(0, 4)}
-              </span>
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-base font-extrabold">
-                  {m.productName || "KPR Rumah Tinggal"}
-                </span>
-                <span className="text-[13px] text-muted-foreground">
-                  {m.bankName} ·{" "}
-                  {m.scheme === "sharia" ? "Syariah" : "Konvensional"}
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2.5 rounded-2xl bg-muted p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2.5">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[13px] text-ink-3">
-                    Sisa pokok{m.outstandingEstimated && " (estimasi)"}
-                  </span>
-                  <span className="text-2xl font-extrabold tracking-[-0.3px] tabular">
-                    {rupiah(m.outstandingPrincipal)}
-                  </span>
-                </div>
-                {m.originalPrincipal > 0 && (
-                  <span className="text-[13px] text-muted-foreground">
-                    dari {rupiah(m.originalPrincipal)}
-                  </span>
-                )}
-              </div>
-              {d.paidRatio == null ? (
-                <span className="flex flex-wrap items-center gap-x-2 text-[13px] text-ink-3">
-                  Progres pelunasan belum diketahui.
-                  <Link
-                    to={progressGap(m, "home").to}
-                    className="flex min-h-11 items-center font-bold text-primary underline"
-                  >
-                    {progressGap(m, "home").label}
-                  </Link>
-                </span>
-              ) : (
-                <>
-                  <ProgressBar value={d.paidRatio * 100} label="Pokok lunas" />
-                  <span className="text-[13px] font-bold text-primary">
-                    {Math.round(d.paidRatio * 100)}% pokok lunas
-                  </span>
-                </>
-              )}
-            </div>
-            <SummaryRows
-              rows={[
-                {
-                  k: "Bunga saat ini",
-                  v: (
-                    <span className="flex items-center gap-2">
-                      {percentBps(m.currentRateBps)}
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-extrabold",
-                          isFloating
-                            ? "bg-warning-bg text-warning"
-                            : "bg-secondary text-primary",
-                        )}
-                      >
-                        {isFloating
-                          ? "Floating"
-                          : rateTypeLabel(m.currentRateType)}
-                      </span>
-                    </span>
-                  ),
-                },
-                {
-                  k: "Masa fixed berakhir",
-                  v: isFloating
-                    ? "Sudah berakhir"
-                    : m.currentRateType === "fixed"
-                      ? dateShort(m.fixedUntil)
-                      : "Belum diketahui",
-                },
-                {
-                  k: "Sisa tenor",
-                  v: m.remainingTenorMonths
-                    ? `${tenorLabel(m.remainingTenorMonths)} lagi`
-                    : "Belum diisi",
-                },
-                {
-                  k: "Lokasi properti",
-                  v: m.property?.city
-                    ? labelOf(CITIES, m.property.city)
-                    : "Belum diisi",
-                },
-              ]}
-            />
+      {/* Rate alerts stay pinned above the widgets the user arranges. */}
+      {d.mode === "floating" && (
+        <HeroCard className="grid grid-cols-1 items-center gap-7 md:grid-cols-2">
+          <div className="flex flex-col gap-3.5">
+            <Chip tone="glass">Bunga floating aktif</Chip>
+            <h2 className="text-2xl leading-8 font-extrabold sm:text-[26px]">
+              KPR kamu sekarang menggunakan bunga floating
+            </h2>
             <Button
-              variant="outline"
-              size="sm"
+              variant="inverse"
               className="w-fit"
-              onClick={() => navigate("/my-kpr/overview")}
+              onClick={() => navigate("/explore")}
             >
-              Lihat perjalanan KPR
+              Bandingkan Pilihan
             </Button>
-          </Panel>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-5 max-xl:contents">
-          {healthLocked ? (
-            <Panel>
-              <span className="flex items-center gap-2 text-[13px] font-extrabold text-ink-3">
-                <LockIcon className="size-4" aria-hidden />
-                KPR Health
-              </span>
-              <p className="text-sm leading-[21px] text-ink-2">
-                Isi penghasilan bulanan untuk membuka KPR Health dan melihat
-                rasio beban cicilan kamu.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={() => setAskIncome(true)}
+          </div>
+          <dl className="flex flex-col rounded-[18px] bg-white/12 px-5 py-2">
+            {[
+              ["Bunga saat ini", percentBps(m.currentRateBps)],
+              ["Cicilan saat ini", rupiah(m.currentPayment)],
+              ...(m.previousFixedPayment
+                ? [
+                    [
+                      "Perubahan dari fixed",
+                      `${signedRupiah(m.currentPayment - m.previousFixedPayment)}/bln`,
+                    ],
+                  ]
+                : []),
+            ].map(([k, v]) => (
+              <div
+                key={k}
+                className="flex justify-between gap-4 border-b border-white/15 py-3 text-sm last:border-b-0"
               >
-                Isi Penghasilan
-              </Button>
-            </Panel>
-          ) : (
-            <Panel className="flex-row items-center gap-6">
-              <HealthRing
-                health={d.health}
-                size={d.mode === "normal" ? 112 : 92}
-              />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <span className="text-[13px] font-extrabold text-ink-3">
-                  KPR Health
-                </span>
-                <Chip tone={d.health.tone}>{d.health.label}</Chip>
-                <p className="text-sm leading-[21px] text-ink-2">
-                  {d.health.score >= 80
-                    ? "Kondisi KPR kamu sehat."
-                    : HEALTH_SENTENCE[weakest?.key]}
-                </p>
-                {d.health.partial && (
-                  <p className="text-xs text-warning-text">
-                    Skor parsial — sebagian komponen belum dapat dihitung.
-                  </p>
-                )}
-                <Link
-                  to="/my-kpr/health"
-                  className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary"
-                >
-                  Lihat penyebab
-                  <ArrowRightIcon className="size-[15px]" aria-hidden />
-                </Link>
+                <dt className="text-white/80">{k}</dt>
+                <dd className="font-extrabold">{v}</dd>
               </div>
-            </Panel>
-          )}
-          <Panel
-            className={cn(
-              "order-2 gap-2.5 xl:order-none",
-              pay &&
-                (pay.tone === "bad"
-                  ? "border-2 border-brand-red"
-                  : "border-2 border-warning-accent"),
-            )}
-          >
-            <span className="text-[13px] font-extrabold text-ink-3">
-              Pembayaran Berikutnya
-            </span>
-            <span className="text-[28px] font-extrabold tracking-[-0.4px] tabular">
-              {rupiah(m.currentPayment)}
-            </span>
-            <span
-              className={cn(
-                "flex items-center gap-2 text-sm",
-                pay?.tone === "bad" ? "font-bold text-danger" : "text-ink-3",
-              )}
-            >
-              <CalendarClockIcon className="size-4" aria-hidden />
-              {dateLong(pay?.due ?? d.nextDue)} ·{" "}
-              {pay?.days < 0
-                ? `terlambat ${-pay.days} hari`
-                : daysLabel(pay?.days ?? d.daysToNextDue)}
-            </span>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1">
-              {pay && (
-                <Button size="md" onClick={() => setMarking(true)}>
-                  <CircleCheckIcon aria-hidden />
-                  Tandai Sudah Dibayar
-                </Button>
-              )}
-              <Link
-                to="/my-kpr/payment"
-                className="flex min-h-11 w-fit items-center text-sm font-bold text-primary"
-              >
-                Lihat detail
-              </Link>
-            </div>
-          </Panel>
+            ))}
+          </dl>
+        </HeroCard>
+      )}
 
-          <Panel className="order-3 gap-3.5 xl:order-none">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-extrabold">Jadwal Amortisasi</h2>
-              {d.schedule && (
-                <p className="text-[13px] text-muted-foreground">
-                  Sisa {d.schedule.rows.length} cicilan · perkiraan lunas{" "}
-                  {monthYear(d.estimatedEndDate)}
-                </p>
-              )}
-            </div>
-            {d.schedule ? (
-              <table className="w-full text-[13px] tabular">
-                <caption className="sr-only">
-                  Tiga cicilan berikutnya. Tanda * = bunga estimasi.
-                </caption>
-                <thead className="text-xs font-extrabold text-ink-3">
-                  <tr>
-                    <th scope="col" className="py-2 pr-2 text-left">
-                      Jatuh tempo
-                    </th>
-                    <th scope="col" className="px-2 py-2 text-right">
-                      Pokok
-                    </th>
-                    <th scope="col" className="py-2 pl-2 text-right sm:px-2">
-                      Bunga
-                    </th>
-                    <th
-                      scope="col"
-                      className="py-2 pl-2 text-right max-sm:hidden"
-                    >
-                      Sisa pokok
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {upcoming.map((r) => (
-                    <tr key={r.month} className="border-t border-line">
-                      <th
-                        scope="row"
-                        className="py-2.5 pr-2 text-left font-bold"
-                      >
-                        {monthYear(r.dueDate)}
-                        {r.estimatedRate && "*"}
-                      </th>
-                      <td className="px-2 py-2.5 text-right">
-                        {rupiah(r.principal)}
-                      </td>
-                      <td className="py-2.5 pl-2 text-right sm:px-2">
-                        {rupiah(r.interest)}
-                      </td>
-                      <td className="py-2.5 pl-2 text-right max-sm:hidden">
-                        {rupiahShort(r.closingBalance)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <Notice tone="muted">
-                Jadwal belum dapat dihitung:{" "}
-                {d.scheduleMissing.join(", ") || "data belum lengkap"}.
-              </Notice>
-            )}
-            {upcoming.some((r) => r.estimatedRate) && (
-              <Disclaimer>Tanda * = bunga estimasi floating.</Disclaimer>
-            )}
-            <Link
-              to="/my-kpr/amortization"
-              className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-bold text-primary"
-            >
-              Lihat jadwal amortisasi
-              <ArrowRightIcon className="size-[15px]" aria-hidden />
-            </Link>
-          </Panel>
-
-          <Panel className="order-5 gap-3.5 xl:order-none">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold">Agenda terdekat</h2>
-              <CalendarIcon className="size-5" aria-hidden />
-            </div>
-            <ul className="flex flex-col gap-0.5">
-              {agenda.map((a) => (
-                <li key={a.t}>
-                  <Link
-                    to={a.to}
-                    className="-mx-2 flex min-h-14 items-center gap-3.5 rounded-xl p-2 hover:bg-muted"
-                  >
-                    <IconBox icon={a.icon} tone={a.tone} />
-                    <span className="flex min-w-0 flex-col gap-0.5">
-                      <span className="text-[15px] font-extrabold">{a.t}</span>
-                      <span className="text-[13px] text-muted-foreground">
-                        {a.s}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </div>
-      </div>
+      <WidgetBoard
+        layout={layout}
+        editing={arranging}
+        onEditingChange={onArrangingChange}
+        onSaved={onChanged}
+        widgetProps={{
+          m,
+          d,
+          clock,
+          simulation,
+          onAskIncome: () => setAskIncome(true),
+          onAskProperty: () => setAskProperty(true),
+          onMarkPaid: () => setMarking(true),
+        }}
+      />
 
       {askIncome && (
         <IncomeDialog
@@ -776,69 +276,5 @@ export function MonitoringDashboard({
         </Button>
       </FormDialog>
     </div>
-  );
-}
-
-function OpportunityTile({
-  to,
-  label,
-  value,
-  unit,
-  note,
-  tone,
-  hasOpportunity,
-}) {
-  // A real opportunity gets the green spotlight; an empty one stays muted so the two read differently at a glance.
-  return (
-    <Link
-      to={to}
-      className={cn(
-        "flex flex-col gap-1.5 rounded-xl border px-4 py-3.5 transition duration-200",
-        hasOpportunity
-          ? "opp-gradient border-white/30 text-white shadow-opp hover:-translate-y-0.5 hover:shadow-opp-hover active:-translate-y-0.5 active:shadow-opp-hover"
-          : "border-opp-mute-border bg-opp-mute hover:shadow-card",
-      )}
-    >
-      <span className="flex w-full items-center justify-between gap-2">
-        <span
-          className={cn(
-            "text-xs font-extrabold tracking-[0.4px]",
-            hasOpportunity ? "text-white/90" : "text-primary",
-          )}
-        >
-          {label}
-        </span>
-        <ChevronRightIcon className="size-4" aria-hidden />
-      </span>
-      <span className="flex flex-wrap items-baseline gap-1.5">
-        <span
-          className={cn(
-            "text-[22px] font-extrabold tracking-[-0.3px]",
-            !hasOpportunity && tone === "warn" && "text-warning-text",
-            !hasOpportunity && tone === "mute" && "text-ink-3",
-          )}
-        >
-          {value}
-        </span>
-        {unit && (
-          <span
-            className={cn(
-              "text-[13px]",
-              hasOpportunity ? "text-white/85" : "text-ink-3",
-            )}
-          >
-            {unit}
-          </span>
-        )}
-      </span>
-      <span
-        className={cn(
-          "text-[13px] leading-[19px]",
-          hasOpportunity ? "text-white/85" : "text-ink-3",
-        )}
-      >
-        {note}
-      </span>
-    </Link>
   );
 }

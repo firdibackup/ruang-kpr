@@ -24,7 +24,7 @@ export function validatePersonal(v, { today }) {
 export function validateEmployment(v) {
   const e = {}
   const self = v.occupation === 'entrepreneur' || v.occupation === 'freelancer'
-  if (!v.occupation) e.occupation = 'Pilih jenis pekerjaan.'
+  if (blank(v.occupation)) e.occupation = 'Pilih atau tulis jenis pekerjaan.'
   if (!minLen(v.companyName, 2)) e.companyName = self ? 'Isi nama usaha.' : 'Isi nama perusahaan.'
   if (!minLen(v.jobTitle, 2)) e.jobTitle = self ? 'Isi bidang usaha.' : 'Isi jabatan kamu.'
   const years = blank(v.workYears) ? null : Number(v.workYears)
@@ -89,7 +89,7 @@ export function toPersonal(v) {
 
 export function toEmployment(v) {
   return {
-    occupation: v.occupation,
+    occupation: v.occupation.trim(),
     companyName: v.companyName.trim(),
     jobTitle: v.jobTitle.trim(),
     workYears: toInt(v.workYears),

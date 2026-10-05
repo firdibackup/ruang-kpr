@@ -3,6 +3,7 @@
 import { addMonths, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
 import { CalculationError, calculateMaxPrincipal } from '@/calculations/finance'
 import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
+import { normalizeLayout } from '@/domains/home/dashboardLayout'
 import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
 import { takeoverDataFromMortgage, takeoverGaps } from '@/domains/optimize/validation'
 import { ApiError } from './apiError'
@@ -10,7 +11,7 @@ import { ARTICLES } from './articles'
 import { BANK_PRODUCTS } from './catalog'
 import { ACCEPTED_EXTENSIONS, DOC_LABELS, MAX_FILE_BYTES, requiredDocuments } from './documentRules'
 import { loadDb, resetDb, saveDb } from './mockDb'
-import { DEFAULT_REMINDERS, SCENARIOS } from './seed'
+import { DEFAULT_REMINDERS, SCENARIOS, createSeed } from './seed'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const clone = (x) => (x === undefined ? x : structuredClone(x))
@@ -443,6 +444,13 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         },
         { auth: false },
       ),
+      deleteAccount: call('auth.deleteAccount', (db) => {
+        if (db.applications.some((a) => IN_PROCESS.includes(a.status))) fail('INVALID_STATE_TRANSITION', 'Masih ada pengajuan yang sedang diproses bank. Batalkan atau tunggu sampai selesai sebelum menghapus akun.', 400)
+        // In place: `call` saves this same object afterwards. Clear first so keys outside the seed (takeoverKept) go too.
+        Object.keys(db).forEach((k) => delete db[k])
+        Object.assign(db, createSeed('guest'))
+        return { deleted: true }
+      }),
     },
 
     dashboard: {
@@ -455,7 +463,15 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         mortgages: db.mortgages,
         simulation: db.simulation,
         unreadActivities: db.activities.filter((a) => !a.readAt).length,
+        dashboardLayout: normalizeLayout(db.dashboardLayout),
       })),
+      // null restores the default board; a missing field means the user never customised it.
+      saveLayout: call('dashboard.saveLayout', (db, layout) => {
+        if (layout !== null && !Array.isArray(layout)) fail('VALIDATION_FAILED', 'Susunan dashboard tidak valid.', 400)
+        if (layout === null) delete db.dashboardLayout
+        else db.dashboardLayout = normalizeLayout(layout)
+        return normalizeLayout(db.dashboardLayout)
+      }),
     },
 
     profile: {

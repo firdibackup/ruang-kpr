@@ -25,5 +25,7 @@ describe('primary validation', () => {
     expect(validateEmployment(base)).toEqual({})
     expect(validateEmployment({ ...base, cardDebt: '' }).cardDebt).toBe('Isi 0 kalau tidak ada.')
     expect(validateEmployment({ ...base, jointIncome: true }).partnerIncome).toBeTruthy()
+    expect(validateEmployment({ ...base, occupation: 'Guru Honorer' }).occupation).toBeUndefined()
+    expect(validateEmployment({ ...base, occupation: '  ' }).occupation).toBe('Pilih atau tulis jenis pekerjaan.')
   })
 })

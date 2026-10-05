@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calculateMaxPrincipal } from '@/calculations/finance'
+import { DEFAULT_LAYOUT } from '@/domains/home/dashboardLayout'
 import { selectHomeState } from '@/domains/home/selectHomeState'
 import { takeoverGaps } from '@/domains/optimize/validation'
 import { createMockApi, mockControls } from './mockApi'
@@ -24,6 +25,25 @@ describe('auth', () => {
     const snap = await api.dashboard.getSnapshot()
     expect(snap.user.name).toBe('Firdi Audi')
     expect(snap.applications).toHaveLength(0) // registration never creates an application
+  })
+
+  it('deleteAccount wipes everything; registering again starts empty', async () => {
+    mockControls.reset('mortgage_active_normal')
+    await api.auth.deleteAccount()
+    expect((await api.auth.getSession()).status).toBe('guest')
+    await expectCode(api.dashboard.getSnapshot(), 'AUTH_REQUIRED')
+    await api.auth.register({ name: 'Firdi Audi', contact: '0812 3456 7890', acceptTerms: true, acceptPrivacy: true })
+    await api.auth.verifyOtp({ otp: '148260' })
+    const snap = await api.dashboard.getSnapshot()
+    expect(snap.profile.nik).toBeUndefined()
+    expect(snap.mortgages).toHaveLength(0)
+    expect(snap.applications).toHaveLength(0)
+  })
+
+  it('deleteAccount is blocked while an application is at the bank', async () => {
+    mockControls.reset('application_in_process')
+    await expectCode(api.auth.deleteAccount(), 'INVALID_STATE_TRANSITION')
+    expect((await api.dashboard.getSnapshot()).user).toBeTruthy()
   })
 })
 
@@ -171,6 +191,18 @@ describe('monitoring', () => {
     await expectCode(api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28', proof: { name: 'bukti.pdf', size: 6 * 1024 * 1024, type: 'application/pdf' } }), 'FILE_TOO_LARGE')
     const p = await api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28', proof: { name: 'bukti.pdf', size: 120_000, type: 'application/pdf' } })
     expect(p.proof).toEqual({ fileName: 'bukti.pdf', sizeBytes: 120_000, contentType: 'application/pdf' })
+  })
+})
+
+describe('dashboard layout', () => {
+  it('starts from the default board; saves a validated layout; null restores the default', async () => {
+    mockControls.reset('mortgage_active_normal')
+    expect((await api.dashboard.getSnapshot()).dashboardLayout).toEqual(DEFAULT_LAYOUT)
+    await expectCode(api.dashboard.saveLayout('rusak'), 'VALIDATION_FAILED')
+    const saved = await api.dashboard.saveLayout([{ i: 'outstanding', x: 0, y: 3, w: 99, h: 4 }, { i: 'chart', x: 0, y: 0, w: 4, h: 4 }])
+    expect(saved).toEqual([{ i: 'outstanding', x: 0, y: 0, w: 12, h: 4 }])
+    expect((await api.dashboard.getSnapshot()).dashboardLayout).toEqual(saved)
+    expect(await api.dashboard.saveLayout(null)).toEqual(DEFAULT_LAYOUT)
   })
 })
 

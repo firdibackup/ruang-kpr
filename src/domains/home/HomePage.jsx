@@ -11,6 +11,7 @@ import {
   GitCompareIcon,
   LandmarkIcon,
   LayersIcon,
+  LayoutDashboardIcon,
   PercentIcon,
   ReceiptIcon,
   RepeatIcon,
@@ -95,6 +96,7 @@ export function HomePage() {
     loading,
     reload,
   } = useResource(() => api.dashboard.getSnapshot());
+  const [arranging, setArranging] = useState(false);
   const name = firstName(snap?.user?.name);
 
   if (!snap) {
@@ -114,7 +116,25 @@ export function HomePage() {
 
   return (
     <>
-      <PageHeader title={`${greeting()}, ${name} 👋`} subtitle={subtitle} />
+      <PageHeader
+        title={`${greeting()}, ${name} 👋`}
+        subtitle={subtitle}
+        actions={
+          active &&
+          !app &&
+          !arranging &&
+          snap.dashboardLayout.length > 0 && (
+            <Button
+              variant="neutral"
+              size="sm"
+              onClick={() => setArranging(true)}
+            >
+              <LayoutDashboardIcon aria-hidden />
+              Atur Dashboard
+            </Button>
+          )
+        }
+      />
       {error && (
         <ErrorPanel
           title="Data mungkin belum terbaru."
@@ -158,6 +178,10 @@ export function HomePage() {
           mortgage={active}
           derived={derived}
           clock={snap.clock}
+          simulation={snap.simulation}
+          layout={snap.dashboardLayout}
+          arranging={arranging}
+          onArrangingChange={setArranging}
           onChanged={reload}
         />
       )}

@@ -12,7 +12,7 @@ const content =
   'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-card bg-card p-7 text-foreground shadow-pop outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95'
 
 // Destructive/important confirmation. Stays open while `onConfirm` runs; errors are shown inline.
-export function ConfirmDialog({ open, onOpenChange, title, body, note, confirmLabel = 'Ya, Hapus', cancelLabel = 'Batal', destructive = true, icon: Icon = Trash2Icon, onConfirm }) {
+export function ConfirmDialog({ open, onOpenChange, title, body, note, children, confirmLabel = 'Ya, Hapus', cancelLabel = 'Batal', confirmDisabled = false, destructive = true, icon: Icon = Trash2Icon, onConfirm }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const confirm = async () => {
@@ -42,6 +42,7 @@ export function ConfirmDialog({ open, onOpenChange, title, body, note, confirmLa
             <AlertDialogPrimitive.Description className="text-sm leading-[21px] text-ink-3">{body}</AlertDialogPrimitive.Description>
             {note && <p className="text-sm font-semibold text-success">{note}</p>}
           </div>
+          {children}
           {error && (
             <p role="alert" className="text-[13px] font-semibold text-danger">
               {error}
@@ -53,7 +54,7 @@ export function ConfirmDialog({ open, onOpenChange, title, body, note, confirmLa
                 {cancelLabel}
               </Button>
             </AlertDialogPrimitive.Cancel>
-            <Button variant={destructive ? 'destructive' : 'default'} size="md" onClick={confirm} disabled={pending} aria-busy={pending}>
+            <Button variant={destructive ? 'destructive' : 'default'} size="md" onClick={confirm} disabled={pending || confirmDisabled} aria-busy={pending}>
               {pending && <Spinner />}
               {confirmLabel}
             </Button>

@@ -41,7 +41,14 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
 
   await expect(page).toHaveURL(/apply\/primary\/2/)
   await expect(page.getByText('30% selesai.')).toBeAttached()
-  await page.getByLabel('Jenis Pekerjaan').selectOption('private_employee')
+  // "Lainnya" swaps in a free-text job; picking a listed job hides it again.
+  const job = page.getByLabel('Jenis Pekerjaan', { exact: true })
+  await job.selectOption('Lainnya')
+  await expect(page.getByLabel('Jenis Pekerjaan lainnya')).toBeFocused()
+  await page.getByLabel('Jenis Pekerjaan lainnya').fill('Guru Honorer')
+  await expect(job).toHaveValue('__other')
+  await job.selectOption('private_employee')
+  await expect(page.getByLabel('Jenis Pekerjaan lainnya')).toHaveCount(0)
   await page.getByLabel('Nama Perusahaan').fill('PT Nusantara Digital')
   await page.getByLabel('Jabatan').fill('Product Designer')
   await page.getByLabel('Lama Bekerja (tahun)').fill('4')

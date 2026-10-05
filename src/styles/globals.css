@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "react-grid-layout/css/styles.css";
 
 /* Tokens copied from the approved Claude Design artifact (RuangKPR App (Standalone).html).
    Deviation for WCAG AA: muted text #6B7A90 (4.36:1 on white) → #5F6E84 (5.2:1). */
@@ -87,6 +88,14 @@
   --input: #e5e8ef;
   --ring: #003da5;
   --radius: 12px;
+  /* Chart colours for Recharts, which reads them from SVG attributes rather than utilities. */
+  --chart-principal: #003da5;
+  --chart-interest: #9db6e3;
+  --chart-ok: #1b8a5a;
+  --chart-warn: #e0a100;
+  --chart-warn-text: #9a5b00;
+  --chart-bad: #dc1c2e;
+  --chart-track: #eef1f6;
 }
 
 @layer base {
@@ -138,6 +147,34 @@
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+@utility scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Home widget board (react-grid-layout): brand drop preview and a 44px resize corner that stays visible
+   while editing, since touch has no hover. */
+.react-grid-item.react-grid-placeholder {
+  background: var(--primary);
+  opacity: 0.1;
+  border-radius: 24px;
+}
+.react-grid-item > .react-resizable-handle {
+  width: 2.75rem;
+  height: 2.75rem;
+  opacity: 1;
+  touch-action: none;
+}
+.react-grid-item > .react-resizable-handle::after {
+  right: 0.875rem;
+  bottom: 0.875rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-right: 3px solid var(--primary);
+  border-bottom: 3px solid var(--primary);
+  border-bottom-right-radius: 3px;
 }
 
 @media (prefers-reduced-motion: reduce) {

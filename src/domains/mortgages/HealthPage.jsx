@@ -6,7 +6,7 @@ import { percentRatio, rupiah } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Chip, Disclaimer, ErrorPanel, Panel, PageSkeleton, ProgressBar } from '@/components/shared/ui'
-import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/MonitoringDashboard'
+import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/dashboardWidgets'
 import { deriveMortgage } from './derive'
 import { progressGap } from './setupMeta'
 

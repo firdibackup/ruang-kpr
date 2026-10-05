@@ -80,6 +80,15 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   // KPR Health waits for penghasilan, Peluang also for the property value; the old property banner is gone.
   await expect(page.getByRole('button', { name: 'Lengkapi Data Properti' })).toHaveCount(0)
   await expect(page.getByText(/Lengkapi penghasilan dan nilai properti untuk melihat potensi/)).toBeVisible()
+  // Locked cards blur an example of the whole card under a lock prompt; the example is never exposed as real data.
+  await expect(page.getByRole('heading', { name: 'Buka peluang KPR kamu' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Buka KPR Health' })).toBeVisible()
+  await expect(page.getByRole('img', { name: /KPR Health \d+ dari 100/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Eksplorasi Pilihan' })).toHaveCount(0)
+  for (const name of ['Peluang KPR', 'KPR Health']) {
+    const body = page.getByRole('group', { name, exact: true }).locator(':scope > div:first-child > *')
+    expect(await body.evaluate((el) => el.scrollHeight - el.clientHeight), name).toBeLessThanOrEqual(1) // fits its default cell
+  }
   await expect(page.getByRole('link', { name: 'Lihat penyebab' })).toHaveCount(0)
   await fillIncome(page)
   await expect(page.getByRole('img', { name: /KPR Health \d+ dari 100/ })).toBeVisible()
@@ -94,10 +103,10 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   await value.fill('850000000')
   await property.getByRole('button', { name: 'Simpan Data Properti' }).click()
   await expect(property).toBeHidden()
-  await expect(page.getByText('POTENSI REFINANCING')).toBeVisible()
+  await expect(page.getByRole('link', { name: /POTENSI REFINANCING/ })).toBeVisible() // the real tile, not the locked example
   await expect(page.getByRole('button', { name: 'Eksplorasi Pilihan' })).toBeVisible()
-  await expect(page.locator('main canvas, main [data-chart]')).toHaveCount(0) // no charts on Home
-  await expect(page.getByRole('table', { name: /Tiga cicilan berikutnya/ }).getByRole('row')).toHaveCount(4) // header + 3 cicilan
+  await expect(page.locator('main canvas, main .recharts-surface')).toHaveCount(0) // default board has no charts; they are opt-in widgets (PRD §11.1)
+  await expect(page.getByRole('table', { name: /Cicilan berikutnya/ }).getByRole('row')).toHaveCount(4) // header + 3 cicilan
   await expect(page.getByRole('link', { name: 'Lihat jadwal amortisasi' })).toHaveAttribute('href', '/my-kpr/amortization')
 
   await page.goto('/my-kpr/property')
