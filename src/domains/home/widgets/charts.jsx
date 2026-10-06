@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRightIcon } from "lucide-react";
 import {
@@ -31,6 +31,7 @@ import {
   balanceProjection,
   nextPaymentSplit,
   yearlyBreakdown,
+  yearStarts,
 } from "./widgetData";
 
 // Chart widgets (Recharts, loaded lazily). Only reachable when widgetLock says the schedule data exists.
@@ -138,6 +139,148 @@ export function BalanceProjectionWidget({ m, d }) {
             strokeWidth={2}
             fill={`url(#${gradient})`}
           />
+        </AreaChart>
+      </div>
+    </Panel>
+  );
+}
+
+const AMORTIZATION_VIEWS = [
+  { id: "payment", label: "Cicilan" },
+  { id: "balance", label: "Sisa pokok" },
+];
+
+// Every remaining installment: pokok and bunga as overlapping areas (where they cross, pokok starts to
+// outweigh bunga), or the balance down to zero.
+export function AmortizationChartWidget({ d }) {
+  const [view, setView] = useState("payment");
+  const { rows } = d.schedule;
+  const payment = view === "payment";
+  const crossover = rows.find((r) => r.principal >= r.interest);
+  const reset = rows.find((r) => r.periodChanged);
+  const payoff = monthYear(d.estimatedEndDate);
+  const sub = payment
+    ? crossover === rows[0]
+      ? "Porsi pokok sudah lebih besar dari bunga"
+      : `Pokok melebihi bunga mulai ${monthYear(crossover.dueDate)}`
+    : `Perkiraan lunas ${payoff}`;
+  return (
+    <Panel className="gap-3">
+      <Heading title="Grafik Amortisasi" sub={sub} />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div
+          role="group"
+          aria-label="Tampilan grafik"
+          className="flex gap-1 rounded-full border border-border p-1"
+        >
+          {AMORTIZATION_VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              aria-pressed={view === v.id}
+              onClick={() => setView(v.id)}
+              className={cn(
+                "h-11 rounded-full px-4 text-sm font-bold outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
+                view === v.id
+                  ? "bg-primary text-white"
+                  : "text-ink-3 hover:text-foreground",
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        {payment && (
+          <span className="flex gap-3">
+            <Swatch color="var(--chart-principal)" label="Pokok" />
+            <Swatch color="var(--chart-interest)" label="Bunga" />
+          </span>
+        )}
+      </div>
+      <div className={CHART_AREA}>
+        <AreaChart
+          responsive
+          style={FILL}
+          data={rows}
+          margin={{ top: 12, right: 6, bottom: 0, left: 0 }}
+          desc={
+            payment
+              ? `Pokok dan bunga tiap cicilan sampai lunas ${payoff}. ${sub}.`
+              : `Sisa pokok turun dari ${rupiah(rows[0].openingBalance)} sampai lunas ${payoff}.`
+          }
+        >
+          <XAxis
+            dataKey="dueDate"
+            ticks={yearStarts(rows)}
+            tickFormatter={(iso) => iso.slice(0, 4)}
+            tick={TICK}
+            tickLine={false}
+            axisLine={false}
+            interval="preserveStartEnd"
+            minTickGap={24}
+          />
+          <YAxis
+            width="auto"
+            tickCount={4}
+            tickFormatter={rupiahShort}
+            tick={TICK}
+            tickLine={false}
+            axisLine={false}
+          />
+          <Tooltip
+            labelFormatter={monthYear}
+            formatter={(v, name) => [rupiah(v), name]}
+            contentStyle={TOOLTIP}
+          />
+          {reset && (
+            <ReferenceLine
+              x={reset.dueDate}
+              stroke="var(--chart-warn)"
+              strokeDasharray="4 4"
+              label={{
+                value: "Akhir fixed",
+                position: "insideTopLeft",
+                fill: "var(--chart-warn-text)",
+                fontSize: "0.7em",
+              }}
+            />
+          )}
+          {payment ? (
+            <>
+              <Area
+                dataKey="interest"
+                name="Bunga"
+                stroke="none"
+                fill="var(--chart-interest)"
+                fillOpacity={1}
+              />
+              <Area
+                dataKey="principal"
+                name="Pokok"
+                stroke="var(--chart-principal)"
+                fill="var(--chart-principal)"
+                fillOpacity={1}
+              />
+              {/* Bunga's edge stays visible once pokok overtakes it. */}
+              <Area
+                dataKey="interest"
+                stroke="var(--chart-interest)"
+                strokeWidth={2}
+                fill="none"
+                tooltipType="none"
+                activeDot={false}
+              />
+            </>
+          ) : (
+            <Area
+              dataKey="closingBalance"
+              name="Sisa pokok"
+              stroke="var(--chart-principal)"
+              strokeWidth={2}
+              fill="var(--chart-principal)"
+              fillOpacity={0.15}
+            />
+          )}
         </AreaChart>
       </div>
     </Panel>

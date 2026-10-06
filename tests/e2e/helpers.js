@@ -1,10 +1,17 @@
 import { expect } from '@playwright/test'
 
-// Dev-only hook exposed by DevPanel (never in production builds).
-export async function useScenario(page, scenario, path = '/') {
+// Dev-only hook exposed by DevPanel (never in production builds). Page tours start as already seen so
+// their overlay never blocks a journey; pass { tours: true } to let them auto-run.
+export async function useScenario(page, scenario, path = '/', { tours = false } = {}) {
   await page.goto('/register')
   await page.waitForFunction(() => window.__ruangkpr)
-  await page.evaluate((s) => window.__ruangkpr.reset(s), scenario)
+  await page.evaluate(
+    ([s, t]) => {
+      window.__ruangkpr.reset(s)
+      if (!t) window.__ruangkpr.seeAllTours()
+    },
+    [scenario, tours],
+  )
   await page.goto(path)
 }
 

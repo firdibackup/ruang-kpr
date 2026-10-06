@@ -46,7 +46,12 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
   await expect(page).toHaveURL(/monitoring\/setup\/1/)
   await expect(page.getByText('Bagian 1 dari 2 · Data KPR')).toBeVisible()
-  await expect(page.getByText('10% selesai.')).toBeAttached()
+  await expect(page.getByText('0% selesai.', { exact: true })).toBeAttached()
+  // Nothing is stored before the first save: backing out leaves no draft on Home.
+  await page.goto('/')
+  await expect(page.getByText('Lanjutkan pengaturan KPR kamu')).toHaveCount(0)
+  await page.goto('/monitoring/intro')
+  await page.getByRole('button', { name: 'Mulai Tambahkan KPR' }).click()
 
   // Step 1 is required: an empty submit stops on the errors.
   await save(page)
@@ -63,7 +68,7 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   // Straight to Reminder: profile and property data are filled later, from Home.
   await expect(page).toHaveURL(/setup\/2$/)
   await expect(page.getByText('Bagian 2 dari 2 · Reminder')).toBeVisible()
-  await expect(page.getByText('75% selesai.')).toBeAttached()
+  await expect(page.getByText('95% selesai.')).toBeAttached()
   const payment = page.getByRole('group', { name: 'Pembayaran bulanan' })
   await expect(payment.getByRole('checkbox', { name: 'H-7' })).toHaveAttribute('aria-checked', 'true')
   await expect(payment.getByRole('checkbox', { name: 'Hari-H' })).toHaveAttribute('aria-checked', 'false')
@@ -96,6 +101,14 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   await fillIncome(page)
   await expect(page.getByRole('img', { name: /KPR Health \d+ dari 100/ })).toBeVisible()
   await expect(page.getByText(/Lengkapi nilai properti untuk melihat potensi/)).toBeVisible()
+  // KPR Health opens the same pop-up from the row's corner, without leaving the page.
+  await page.goto('/my-kpr/health')
+  await page.getByRole('button', { name: 'Isi nilai properti' }).click()
+  await expect(page.getByRole('dialog', { name: 'Data properti' })).toBeVisible()
+  await expect(page).toHaveURL(/my-kpr\/health$/)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Data properti' })).toBeHidden()
+  await page.goto('/')
   // Peluang opens the property pop-up right on Home; only the value is required.
   await page.getByRole('button', { name: 'Isi Nilai Properti' }).click()
   const property = page.getByRole('dialog', { name: 'Data properti' })
@@ -106,7 +119,8 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   await value.fill('850000000')
   await property.getByRole('button', { name: 'Simpan Data Properti' }).click()
   await expect(property).toBeHidden()
-  await expect(page.getByRole('link', { name: /POTENSI REFINANCING/ })).toBeVisible() // the real tile, not the locked example
+  await expect(page.getByRole('button', { name: /POTENSI REFINANCING/ })).toBeVisible() // the real tile, not the locked example
+  await expect(page.getByRole('button', { name: /POTENSI TAKE OVER/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Eksplorasi Pilihan' })).toBeVisible()
   // Every field filled: the default board now leads with Peluang and Health, without a reload.
   await expect.poll(async () => (await top('Peluang KPR')) < (await top('KPR Saya')) && (await top('KPR Health')) < (await top('KPR Saya'))).toBe(true)
@@ -157,7 +171,9 @@ test('penghasilan from the Home pop-up fills Take Over; data the setup no longer
   await page.getByRole('button', { name: 'Lihat Dashboard' }).click()
   await fillIncome(page)
 
-  await page.goto('/optimize/start?mode=takeover')
+  // The warning card's Take Over skips the bank list until the missing data is filled.
+  await page.getByRole('button', { name: 'Bandingkan Take Over' }).click()
+  await expect(page).toHaveURL(/optimize\/start\?mode=takeover$/)
   await expect(page.getByText('Lengkapi data pengajuan dulu')).toBeVisible()
   await expect(page.getByText(/belum lengkap: data pribadi, pekerjaan, data properti\./)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Lihat Kondisi KPR' })).toHaveCount(0)
@@ -199,6 +215,32 @@ test('penghasilan from the Home pop-up fills Take Over; data the setup no longer
 test('warning & partial states: H-90 warning is first, partial rate shows no fake table', async ({ page }) => {
   await useScenario(page, 'mortgage_active_h90', '/')
   await expect(page.getByText('Peringatan bunga · H-90')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Minta repricing' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Bandingkan Take Over' }).click()
+  await expect(page).toHaveURL(/optimize\/programs$/) // straight to the bank list
+  await expect(page.getByRole('button', { name: 'Lihat Detail' }).first()).toBeVisible()
+
+  // Peluang tiles also open the bank list directly.
+  await page.goto('/')
+  await page.getByRole('button', { name: /POTENSI REFINANCING/ }).click()
+  await expect(page).toHaveURL(/optimize\/programs$/)
+  await expect(page.getByRole('heading', { name: 'Pilihan Refinancing + Top-up' })).toBeVisible()
+  await page.goto('/')
+  await page.getByRole('button', { name: /POTENSI TAKE OVER/ }).click()
+  await expect(page).toHaveURL(/optimize\/programs$/)
+  await expect(page.getByRole('heading', { name: 'Pilihan Take Over' })).toBeVisible()
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Tetap di bank sekarang' }).click()
+  const dialog = page.getByRole('alertdialog')
+  await expect(dialog).toContainText('fixed rate tinggal 60 hari')
+  await dialog.getByRole('button', { name: 'Ya, Sembunyikan' }).click()
+  await expect(page.getByText('Peringatan bunga · H-90')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByText('POTENSI REFINANCING')).toBeVisible() // dashboard loaded
+  await expect(page.getByText('Peringatan bunga · H-90')).toHaveCount(0) // hidden until H-60
+
+  await useScenario(page, 'mortgage_active_h90', '/')
   await page.getByRole('button', { name: 'Lihat Pilihan' }).click()
   await expect(page).toHaveURL(/my-kpr\/rate/)
   await expect(page.getByText('estimasi').first()).toBeVisible()

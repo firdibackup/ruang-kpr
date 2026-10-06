@@ -12,11 +12,11 @@ import {
   pickArticles,
   remainingInterest,
   sampleWidgetProps,
-  simulationSummary,
   tenorProgress,
   upcomingReminders,
   widgetLock,
   yearlyBreakdown,
+  yearStarts,
 } from './widgetData'
 
 const scenario = (id, patch = {}) => {
@@ -78,6 +78,11 @@ describe('widget data', () => {
     expect(next.dueDate).toBe(normal.d.nextDue)
     expect(next.principal + next.interest).toBe(next.payment)
     expect(yearlyBreakdown(normal.d)).toHaveLength(10)
+    const rows = normal.d.schedule.rows
+    const ticks = yearStarts(rows)
+    expect(ticks[0]).toBe(rows[0].dueDate)
+    expect(ticks.slice(1).every((t) => t.slice(5, 7) === '01')).toBe(true)
+    expect(ticks).toHaveLength(normal.d.schedule.yearly.length)
   })
 
   it('places the journey: tenor year, periods, and payoff', () => {
@@ -96,19 +101,6 @@ describe('widget data', () => {
   it('reads the payment calendar and the next reminders', () => {
     expect(paymentCalendar(normal.m, normal.d, normal.clock).map((x) => x.state)).toEqual(['untracked', 'untracked', 'paid', 'upcoming', 'upcoming', 'upcoming'])
     expect(upcomingReminders(normal.m, normal.d, normal.clock).map((x) => x.label)).toEqual(['Cicilan H-7', 'Cicilan H-3', 'Cicilan H-1'])
-  })
-
-  it('summarises the last simulation against the reference installment', () => {
-    expect(simulationSummary(null)).toBeNull()
-    const sim = {
-      input: { mode: 'takeover' },
-      baseline: { currentPayment: 5_000_000, payments: [], fixedMonthsLeft: null },
-      items: [
-        { eligibility: 'estimated_eligible', stale: false, payment: 4_500_000, bank: { name: 'Bank A' }, name: 'KPR A', breakEven: { month: 14 } },
-        { eligibility: 'not_eligible', stale: false, payment: 4_000_000, bank: { name: 'Bank B' }, name: 'KPR B' },
-      ],
-    }
-    expect(simulationSummary(sim)).toMatchObject({ mode: 'takeover', count: 1, best: { bank: 'Bank A', saving: 500_000, breakEvenMonth: 14 } })
   })
 
   it('picks reading that fits the rate situation', () => {

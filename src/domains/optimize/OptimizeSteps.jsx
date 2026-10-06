@@ -4,6 +4,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -134,10 +135,24 @@ export function OptimizeStepPage({ employment = false }) {
   const n = employment ? 1 : Number(step);
   const location = useLocation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const opt = useOptimize();
-  const { snap, app, error, reload, setApp } = opt;
+  const { snap, error, reload, setApp } = opt;
   if (!(n >= 1 && n <= 7)) return <Navigate to="/optimize/intro" replace />;
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />;
+  // Nothing is stored until Data pribadi is saved: a new Take Over fills an unsaved draft (no id) that useStepSave creates.
+  const profile = snap.profile ?? {};
+  const app =
+    opt.app ??
+    (!opt.otherApp && n === 1 && !employment
+      ? {
+          status: "draft",
+          currentStep: 1,
+          optimizationMode: params.get("mode") === "topup" ? "topup" : "takeover",
+          selection: null,
+          data: { personal: { ...profile, fullName: profile.fullName ?? snap.user?.name } },
+        }
+      : null);
   if (!app) return <Navigate to="/optimize/intro" replace />;
   if (app.status !== "draft")
     return <Navigate to="/my-kpr/application" replace />;
@@ -303,7 +318,10 @@ function useStepSave(app, step, setApp) {
     setSaving(true);
     setError("");
     try {
-      const saved = await api.applications.saveStep(app.id, { step, values });
+      const id =
+        app.id ??
+        (await api.applications.create({ productType: "takeover", mode: app.optimizationMode })).id;
+      const saved = await api.applications.saveStep(id, { step, values });
       setApp(saved);
       toast("Tersimpan.");
       return saved;

@@ -54,8 +54,10 @@ export function rateMode(m, asOf) {
   return { mode: days > 0 && days <= WARNING_WINDOW_DAYS ? 'warning' : 'normal', daysUntilFixedEnd: days }
 }
 
+export const FIXED_MILESTONES = [90, 60, 30, 14, 7]
+
 export function nextMilestone(days) {
-  return [90, 60, 30, 14, 7].filter((h) => days <= h).at(-1) ?? null
+  return FIXED_MILESTONES.filter((h) => days <= h).at(-1) ?? null
 }
 
 // Provisional KPR Health (PRD §11.2, open question #7): documented thresholds, not a bank credit score.

@@ -35,6 +35,8 @@ export function widgetLock(id, m, d) {
       return scheduleLock(m, d, 'melihat jadwal cicilan berikutnya')
     case 'balanceProjection':
       return scheduleLock(m, d, 'melihat proyeksi sisa pokok')
+    case 'amortizationChart':
+      return scheduleLock(m, d, 'melihat grafik amortisasi')
     case 'paymentSplit':
       return scheduleLock(m, d, 'melihat komposisi cicilan')
     case 'yearlyBreakdown':
@@ -68,7 +70,10 @@ export function remainingInterest(d) {
 
 export const nextPaymentSplit = (d) => d.schedule.rows.find((r) => r.dueDate >= d.nextDue) ?? d.schedule.rows[0]
 
-export const yearlyBreakdown = (d, years = 10) => d.schedule.yearly.slice(0, years).map(({ year, principal, interest }) => ({ year, principal, interest }))
+// Due date of each year's first installment: the year ticks of a monthly schedule chart.
+export const yearStarts = (rows) => rows.filter((r, i) => i === 0 || r.dueDate.slice(0, 4) !== rows[i - 1].dueDate.slice(0, 4)).map((r) => r.dueDate)
+
+export const yearlyBreakdown =(d, years = 10) => d.schedule.yearly.slice(0, years).map(({ year, principal, interest }) => ({ year, principal, interest }))
 
 // Elapsed share of the original tenor, read as "year N of M".
 export function tenorProgress(m, clock) {
@@ -121,20 +126,6 @@ export function upcomingReminders(m, d, clock, limit = 3) {
     .slice(0, limit)
 }
 
-// Best open program of the last simulation, against the same reference installment Explore uses.
-export function simulationSummary(sim) {
-  if (!sim?.baseline) return null
-  const open = (sim.items ?? []).filter((x) => x.eligibility !== 'not_eligible' && !x.stale)
-  const best = open.find((x) => x.recommended) ?? [...open].sort((a, b) => a.payment - b.payment)[0]
-  const b = sim.baseline
-  const reference = b.fixedMonthsLeft != null ? b.payments[b.fixedMonthsLeft] : b.currentPayment
-  return {
-    mode: sim.input.mode,
-    count: open.length,
-    best: best && { bank: best.bank.name, product: best.name, payment: best.payment, saving: reference - best.payment, breakEvenMonth: best.breakEven?.month ?? null },
-  }
-}
-
 const ARTICLE_FOR_MODE = { normal: 'fixed-vs-floating', warning: 'fixed-vs-floating', floating: 'break-even-take-over' }
 export function pickArticles(articles, d, limit = 2) {
   const wanted = [ARTICLE_FOR_MODE[d.mode], d.property?.equity > 0 && 'refinancing-vs-multiguna'].map((slug) => articles.find((a) => a.slug === slug)).filter(Boolean)
@@ -169,4 +160,4 @@ const SAMPLE = {
   activatedAt: '2021-12-22',
   version: 1,
 }
-export const sampleWidgetProps = (clock) => ({ m: SAMPLE, d: deriveMortgage(SAMPLE, clock), clock, simulation: null, onAskIncome() {}, onAskProperty() {}, onMarkPaid() {} })
+export const sampleWidgetProps = (clock) => ({ m: SAMPLE, d: deriveMortgage(SAMPLE, clock), clock, onAskIncome() {}, onAskProperty() {}, onMarkPaid() {}, onOpenPrograms() {} })

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import {
   ArrowLeftRightIcon,
   ArrowRightIcon,
   ChevronRightIcon,
   LandmarkIcon,
-  PercentIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { api } from "@/data/api";
+import { addDays } from "@/calculations/dates";
 import {
   daysLabel,
   percentBps,
@@ -17,8 +17,13 @@ import {
   dateShort,
 } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { FormDialog } from "@/components/shared/dialogs";
+import { ConfirmDialog } from "@/components/shared/dialogs";
 import { MarkPaidDialog, PropertyDialog } from "@/domains/mortgages/MyKprTabs";
+import { FIXED_MILESTONES } from "@/domains/mortgages/derive";
+import {
+  defaultTakeoverGoal,
+  mortgageTakeoverGaps,
+} from "@/domains/optimize/validation";
 import { IncomeDialog } from "@/domains/profile/ProfilePages";
 import {
   Chip,
@@ -26,6 +31,7 @@ import {
   EstimateTag,
   HeroCard,
   Notice,
+  Spinner,
   SummaryRows,
 } from "@/components/shared/ui";
 import { WidgetBoard } from "./WidgetBoard";
@@ -33,24 +39,44 @@ import { WidgetBoard } from "./WidgetBoard";
 export function MonitoringDashboard({
   mortgage: m,
   derived: d,
+  snap,
   clock,
-  simulation,
   layout,
   arranging,
   onArrangingChange,
   onChanged,
 }) {
   const navigate = useNavigate();
-  const [repricing, setRepricing] = useState(false);
+  const [confirmStay, setConfirmStay] = useState(false);
+  const [opening, setOpening] = useState(null); // mode whose program list is loading
   const [marking, setMarking] = useState(false);
   const [askIncome, setAskIncome] = useState(false);
   const [askProperty, setAskProperty] = useState(false);
   const fi = d.floatingImpact;
   const pay = d.paymentAlert;
+  // "Tetap di bank" hides the warning until the next milestone.
+  const nextAt = FIXED_MILESTONES.find((h) => h < d.milestone);
+
+  // Straight to the bank list (Take Over or Refinancing) with the default goal; missing data or a failed simulation
+  // lands on the start page, which says what to complete.
+  const openPrograms = async (mode) => {
+    const start = `/optimize/start?mode=${mode}`;
+    if (mortgageTakeoverGaps(m, snap, mode).length) return navigate(start);
+    setOpening(mode);
+    try {
+      await api.simulations.run({
+        source: { type: "mortgage", id: m.id },
+        input: defaultTakeoverGoal(m, mode),
+      });
+      navigate("/optimize/programs");
+    } catch {
+      navigate(start);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      {d.mode === "warning" && (
+      {d.mode === "warning" && m.rateWarningDismissedMilestone !== d.milestone && (
         <section
           className="grid grid-cols-1 gap-7 rounded-card border-2 border-warning-accent bg-card p-6 shadow-card md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:p-7"
           aria-labelledby="warn-title"
@@ -117,31 +143,30 @@ export function MonitoringDashboard({
               {
                 label: "Tetap di bank sekarang",
                 icon: LandmarkIcon,
-                go: () =>
-                  toast(
-                    "Kami tetap mengingatkan jadwal pembayaran dan perubahan bunga.",
-                  ),
+                go: () => setConfirmStay(true),
               },
               {
                 label: "Bandingkan Take Over",
                 icon: ArrowLeftRightIcon,
-                go: () => navigate("/explore"),
-              },
-              {
-                label: "Minta repricing",
-                icon: PercentIcon,
-                go: () => setRepricing(true),
+                go: () => openPrograms("takeover"),
+                pending: opening === "takeover",
               },
             ].map((o) => (
               <button
                 key={o.label}
                 type="button"
                 onClick={o.go}
-                className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-4 text-left text-sm font-bold hover:border-primary"
+                disabled={!!opening}
+                aria-busy={o.pending}
+                className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-card px-4 text-left text-sm font-bold hover:border-primary disabled:opacity-60"
               >
                 <o.icon className="size-[18px]" aria-hidden />
                 <span className="flex-1">{o.label}</span>
-                <ChevronRightIcon className="size-4" aria-hidden />
+                {o.pending ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <ChevronRightIcon className="size-4" aria-hidden />
+                )}
               </button>
             ))}
             <Disclaimer>
@@ -219,9 +244,10 @@ export function MonitoringDashboard({
           m,
           d,
           clock,
-          simulation,
           onAskIncome: () => setAskIncome(true),
           onAskProperty: () => setAskProperty(true),
+          onOpenPrograms: openPrograms,
+          opening,
           onMarkPaid: () => setMarking(true),
         }}
       />
@@ -260,21 +286,22 @@ export function MonitoringDashboard({
         />
       )}
 
-      <FormDialog
-        open={repricing}
-        onOpenChange={setRepricing}
-        title="Minta repricing"
-        description="Repricing adalah penyesuaian bunga di bank yang sama."
-      >
-        <p className="text-sm leading-[21px] text-ink-3">
-          Hubungi bank kamu untuk menanyakan opsi repricing sebelum masa fixed
-          berakhir. Pengajuan repricing lewat RuangKPR belum tersedia pada versi
-          ini.
-        </p>
-        <Button variant="neutral" size="md" onClick={() => setRepricing(false)}>
-          Mengerti
-        </Button>
-      </FormDialog>
+      <ConfirmDialog
+        open={confirmStay}
+        onOpenChange={setConfirmStay}
+        destructive={false}
+        title="Tetap di bank sekarang?"
+        body={`Peringatan ini disembunyikan dari Home. ${
+          nextAt
+            ? `Kami tampilkan lagi saat fixed rate tinggal ${nextAt} hari (${dateShort(addDays(m.fixedUntil, -nextAt))}).`
+            : "Peringatan tidak muncul lagi sebelum fixed rate berakhir."
+        } Reminder pembayaran tetap berjalan.`}
+        confirmLabel="Ya, Sembunyikan"
+        onConfirm={async () => {
+          await api.mortgages.dismissRateWarning(m.id);
+          onChanged();
+        }}
+      />
     </div>
   );
 }

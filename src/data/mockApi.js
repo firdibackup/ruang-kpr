@@ -5,13 +5,15 @@ import { CalculationError, calculateMaxPrincipal } from '@/calculations/finance'
 import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
 import { normalizeLayout } from '@/domains/home/dashboardLayout'
 import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
-import { takeoverDataFromMortgage, takeoverGaps } from '@/domains/optimize/validation'
+import { nextMilestone, rateMode } from '@/domains/mortgages/derive'
+import { defaultTakeoverGoal, takeoverDataFromMortgage, takeoverGaps } from '@/domains/optimize/validation'
 import { ApiError } from './apiError'
 import { ARTICLES } from './articles'
 import { BANK_PRODUCTS } from './catalog'
 import { ACCEPTED_EXTENSIONS, DOC_LABELS, MAX_FILE_BYTES, requiredDocuments } from './documentRules'
 import { loadDb, resetDb, saveDb } from './mockDb'
 import { DEFAULT_REMINDERS, SCENARIOS, createSeed } from './seed'
+import { TOURS } from './tours'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const clone = (x) => (x === undefined ? x : structuredClone(x))
@@ -467,6 +469,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         simulation: db.simulation,
         unreadActivities: db.activities.filter((a) => !a.readAt).length,
         dashboardLayout: savedLayout(db),
+        toursSeen: db.toursSeen ?? [],
       })),
       // null restores the default board; a missing field means the user never customised it.
       saveLayout: call('dashboard.saveLayout', (db, layout) => {
@@ -474,6 +477,12 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (layout === null) delete db.dashboardLayout
         else db.dashboardLayout = normalizeLayout(layout)
         return savedLayout(db)
+      }),
+      // Page tours auto-run once; the "Panduan" button replays them without touching this list.
+      markTourSeen: call('dashboard.markTourSeen', (db, id) => {
+        if (!Object.hasOwn(TOURS, id)) fail('VALIDATION_FAILED', 'Panduan tidak dikenal.', 400)
+        db.toursSeen = [...new Set([...(db.toursSeen ?? []), id])]
+        return db.toursSeen
       }),
     },
 
@@ -757,6 +766,15 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         }
         return m
       }),
+      // "Tetap di bank sekarang": hides the Home fixed-rate warning until the next milestone (H-60/30/14/7).
+      dismissRateWarning: call('mortgages.dismissRateWarning', (db, id) => {
+        const m = findMortgage(db, id)
+        const { mode, daysUntilFixedEnd } = rateMode(m, db.clock)
+        if (m.status !== 'active' || mode !== 'warning') fail('INVALID_STATE_TRANSITION', 'Tidak ada peringatan bunga yang aktif.', 400)
+        m.rateWarningDismissedMilestone = nextMilestone(daysUntilFixedEnd)
+        touch(db, m)
+        return m
+      }),
       deleteDraft: call('mortgages.deleteDraft', (db, id) => {
         const m = findMortgage(db, id)
         if (m.status !== 'draft') fail('INVALID_STATE_TRANSITION', 'Hanya data pengaturan yang belum aktif yang bisa dihapus.', 400)
@@ -853,7 +871,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         const days = m.currentRateType === 'fixed' && m.fixedUntil && m.fixedUntil >= db.clock ? daysUntil({ fromDate: db.clock, targetDate: m.fixedUntil }) : null
         let opportunity = { available: false }
         try {
-          const sim = runSimulation(db, { id: 'explore', source: { type: 'mortgage', id: m.id }, input: { mode: 'takeover', goal: 'lower_payment', tenorMonths: Math.min(300, Math.max(60, Math.round(m.remainingTenorMonths / 12) * 12)) } })
+          const sim = runSimulation(db, { id: 'explore', source: { type: 'mortgage', id: m.id }, input: defaultTakeoverGoal(m) })
           // Near/after the fixed end the fair reference is the (estimated) floating installment, not today's fixed one.
           const fixedLeft = sim.baseline.fixedMonthsLeft
           const reference = fixedLeft != null ? sim.baseline.payments[fixedLeft] : sim.baseline.currentPayment
@@ -912,6 +930,12 @@ export const mockControls = {
   scenarios: SCENARIOS,
   currentScenario: () => loadDb().scenario,
   reset: (scenario) => resetDb(scenario),
+  // E2E journeys run with tours already seen so the overlay never blocks them.
+  seeAllTours() {
+    const db = loadDb()
+    db.toursSeen = Object.keys(TOURS)
+    saveDb(db)
+  },
   failNext: (name, error = { code: 'SERVICE_UNAVAILABLE', message: 'Koneksi bermasalah. Periksa koneksi lalu coba lagi.', status: 503, retryable: true }) => failures.set(name, error),
   advanceApplication(id) {
     const db = loadDb()

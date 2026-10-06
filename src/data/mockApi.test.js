@@ -161,6 +161,15 @@ describe('monitoring', () => {
     expect(saved.status).toBe('active')
   })
 
+  it('"Tetap di bank" hides the fixed-rate warning for the current milestone only', async () => {
+    mockControls.reset('mortgage_active_h90')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    expect((await api.mortgages.dismissRateWarning(m.id)).rateWarningDismissedMilestone).toBe(90)
+    mockControls.reset('mortgage_active_normal')
+    const [normal] = (await api.dashboard.getSnapshot()).mortgages
+    await expectCode(api.mortgages.dismissRateWarning(normal.id), 'INVALID_STATE_TRANSITION')
+  })
+
   it('saving unrelated fields keeps an existing sisa pinjaman stable', async () => {
     mockControls.reset('mortgage_active_normal')
     const [m] = (await api.dashboard.getSnapshot()).mortgages
@@ -202,6 +211,17 @@ describe('dashboard layout', () => {
     expect(saved).toEqual([{ i: 'outstanding', x: 0, y: 0, w: 12, h: 4 }])
     expect((await api.dashboard.getSnapshot()).dashboardLayout).toEqual(saved)
     expect(await api.dashboard.saveLayout(null)).toBeNull()
+  })
+})
+
+describe('page tours', () => {
+  it('none seen after a reset; marks known tours once; rejects unknown ids', async () => {
+    mockControls.reset('fresh')
+    expect((await api.dashboard.getSnapshot()).toursSeen).toEqual([])
+    await api.dashboard.markTourSeen('home-fresh')
+    await api.dashboard.markTourSeen('home-fresh')
+    await expectCode(api.dashboard.markTourSeen('toString'), 'VALIDATION_FAILED')
+    expect((await api.dashboard.getSnapshot()).toursSeen).toEqual(['home-fresh'])
   })
 })
 

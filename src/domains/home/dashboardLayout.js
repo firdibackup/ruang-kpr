@@ -30,6 +30,7 @@ export const WIDGETS = [
   { id: 'rate', category: 'summary', title: 'Bunga & Masa Fixed', description: 'Bunga berjalan dan kapan masa fixed berakhir.', w: 4, h: 4, minW: 3, minH: 4 },
   { id: 'progress', category: 'summary', title: 'Progres Pelunasan', description: 'Persentase pokok yang sudah lunas.', w: 4, h: 4, minW: 3, minH: 4 },
   { id: 'balanceProjection', category: 'chart', title: 'Proyeksi Sisa Pokok', description: 'Jalur sisa pokok dari sekarang sampai lunas.', w: 7, h: 7, minW: 5, minH: 6 },
+  { id: 'amortizationChart', category: 'chart', title: 'Grafik Amortisasi', description: 'Pokok vs bunga tiap cicilan dan sisa pokok sampai lunas.', w: 7, h: 8, minW: 5, minH: 7 },
   { id: 'floatingImpact', category: 'chart', title: 'Dampak Floating', description: 'Cicilan sekarang dibanding setelah masa fixed berakhir.', w: 5, h: 6, minW: 4, minH: 5 },
   { id: 'paymentSplit', category: 'chart', title: 'Komposisi Cicilan', description: 'Porsi pokok dan bunga di cicilan berikutnya.', w: 4, h: 6, minW: 4, minH: 5 },
   { id: 'yearlyBreakdown', category: 'chart', title: 'Pokok vs Bunga per Tahun', description: 'Pembayaran pokok dan bunga 10 tahun ke depan.', w: 7, h: 7, minW: 5, minH: 6 },
@@ -41,7 +42,6 @@ export const WIDGETS = [
   { id: 'paymentHistory', category: 'timeline', title: 'Riwayat Pembayaran', description: 'Status cicilan 3 bulan terakhir dan 3 bulan ke depan.', w: 6, h: 5, minW: 4, minH: 5 },
   { id: 'reminders', category: 'activity', title: 'Pengingat Aktif', description: 'Pengingat terdekat dan kanal pengirimannya.', w: 5, h: 6, minW: 4, minH: 5 },
   { id: 'recentActivity', category: 'activity', title: 'Aktivitas Terbaru', description: 'Notifikasi terbaru tentang KPR kamu.', w: 5, h: 6, minW: 4, minH: 6 },
-  { id: 'lastSimulation', category: 'activity', title: 'Simulasi Terakhir', description: 'Ringkasan simulasi Take Over terakhir.', w: 5, h: 5, minW: 4, minH: 5 },
   { id: 'reading', category: 'activity', title: 'Bacaan Untukmu', description: 'Artikel yang relevan dengan kondisi KPR kamu.', w: 5, h: 6, minW: 4, minH: 5 },
 ]
 export const WIDGET = Object.fromEntries(WIDGETS.map((w) => [w.id, w]))

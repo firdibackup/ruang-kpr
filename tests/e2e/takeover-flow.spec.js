@@ -57,13 +57,17 @@ test('cold-entry take over: 5 data steps (official figures) → baseline → pro
   await page.getByRole('button', { name: 'Mulai' }).click()
   const save = () => page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
-  await expect(page).toHaveURL(/optimize\/1$/)
+  await expect(page).toHaveURL(/optimize\/1\?mode=takeover$/)
   await expect(page.getByText('Bagian 1 dari 3 · Kamu & KPR Lama')).toBeVisible()
-  await expect(page.getByText('10% selesai.')).toBeAttached()
+  await expect(page.getByText('0% selesai.', { exact: true })).toBeAttached()
+  // Nothing is stored before the first save: backing out leaves no draft on Home.
+  await page.goto('/')
+  await expect(page.getByText('Lanjutkan pengajuan kamu')).toHaveCount(0)
+  await page.goto('/optimize/1?mode=takeover')
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/1\/pekerjaan/)
-  await expect(page.getByText('20% selesai.')).toBeAttached() // Pekerjaan is its own progress screen
+  await expect(page.getByText('30% selesai.')).toBeAttached() // Pekerjaan is its own progress screen
   await page.getByRole('button', { name: 'Isi contoh data' }).click()
   await save()
   await expect(page).toHaveURL(/optimize\/2$/)
@@ -77,7 +81,7 @@ test('cold-entry take over: 5 data steps (official figures) → baseline → pro
   // Phase 1 milestone (/optimize/3 has no form): what staying with the old bank looks like.
   await expect(page).toHaveURL(/optimize\/3$/)
   await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toBeVisible()
-  await expect(page.getByText('45% selesai.')).toBeAttached()
+  await expect(page.getByText('55% selesai.')).toBeAttached()
   await expect(page.getByText('Sisa bunga jika tetap')).toBeVisible()
   await expect(page.getByText('Pokok sudah lunas')).toBeVisible()
   await expect(page.getByText('Floating', { exact: true })).toBeVisible()
@@ -89,7 +93,7 @@ test('cold-entry take over: 5 data steps (official figures) → baseline → pro
   await expect(page).toHaveURL(/optimize\/4/) // Properti
   // Going back to edit keeps the furthest saved percent instead of dropping it.
   await page.goto('/optimize/1/pekerjaan')
-  await expect(page.getByText('55% selesai.')).toBeAttached()
+  await expect(page.getByText('65% selesai.')).toBeAttached()
   await page.goto('/optimize/4')
   await expect(page.getByText('Bagian 2 dari 3 · Kondisi & Tujuan')).toBeVisible()
   await expect(page.getByText('Kesehatan KPR kamu')).toBeVisible()
@@ -108,7 +112,7 @@ test('cold-entry take over: 5 data steps (official figures) → baseline → pro
 
   await expect(page).toHaveURL(/optimize\/baseline/)
   await expect(page.getByRole('heading', { name: 'Tahap 2 selesai' })).toBeVisible()
-  await expect(page.getByText('75% selesai.')).toBeAttached()
+  await expect(page.getByText('80% selesai.')).toBeAttached()
   await expect(page.getByText(/\d+ program cocok/)).toBeVisible()
   await expect(page.getByText('Angka resmi dari bank')).toBeVisible()
   await page.getByRole('button', { name: 'Bandingkan Program' }).click()
@@ -127,7 +131,7 @@ test('a deleted Take Over draft keeps what was typed: starting again opens fille
     await page.getByRole('button', { name: /^Take Over/ }).click()
     await expect(page).toHaveURL(/optimize\/intro/)
     await page.getByRole('button', { name: 'Mulai', exact: true }).click()
-    await expect(page).toHaveURL(/optimize\/1$/)
+    await expect(page).toHaveURL(/optimize\/1\?mode=takeover$/)
   }
   const save = () => page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
   await start()

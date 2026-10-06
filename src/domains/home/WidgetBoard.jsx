@@ -134,7 +134,7 @@ export function WidgetBoard({
   return (
     <div className="flex flex-col gap-5">
       {editing && (
-        <div className="flex flex-col gap-3 rounded-card bg-card p-5 shadow-card lg:sticky lg:top-4 lg:z-20 lg:flex-row lg:items-center lg:gap-6">
+        <div data-tour="arrange-panel" className="flex flex-col gap-3 rounded-card bg-card p-5 shadow-card lg:sticky lg:top-4 lg:z-20 lg:flex-row lg:items-center lg:gap-6">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <h2 className="text-base font-extrabold">Atur Dashboard</h2>
             <p className="text-[13px] leading-5 text-ink-3">
@@ -144,11 +144,12 @@ export function WidgetBoard({
             </p>
           </div>
           {/* Two by two on a phone, one row from sm up. */}
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:shrink-0">
+          <div data-tour="arrange-actions" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:shrink-0">
             <Button
               variant="outline"
               size="sm"
               className="max-sm:px-3"
+              data-tour="arrange-add"
               onClick={() => setAdding(true)}
             >
               <PlusIcon aria-hidden />
@@ -217,6 +218,7 @@ export function WidgetBoard({
               {readingOrder(layout).map((l) => (
                 <div
                   key={l.i}
+                  data-tour={l.i}
                   role="group"
                   aria-label={WIDGET[l.i].title}
                   className="[container-type:size]"
@@ -231,6 +233,7 @@ export function WidgetBoard({
               {readingOrder(layout).map((l) => (
                 <div
                   key={l.i}
+                  data-tour={l.i}
                   role="group"
                   aria-label={WIDGET[l.i].title}
                   className="relative @container"
@@ -294,6 +297,7 @@ function Widget({
             {grid ? (
               <>
                 <span
+                  data-tour="widget-move"
                   className="widget-handle flex size-11 cursor-grab touch-none items-center justify-center rounded-xl border border-border bg-card text-ink-3 shadow-card active:cursor-grabbing"
                   title={`Tarik untuk memindah ${title}`}
                 >
@@ -305,6 +309,7 @@ function Widget({
                       variant="neutral"
                       size="icon"
                       className="shadow-card"
+                      data-tour="widget-menu"
                       aria-label={`Atur ${title}`}
                     >
                       <EllipsisIcon className="size-5" aria-hidden />
@@ -326,6 +331,7 @@ function Widget({
                 variant="neutral"
                 size="icon"
                 className="shadow-card"
+                data-tour="widget-hide"
                 aria-label={`Sembunyikan ${title}`}
                 onClick={() =>
                   onEdit(removeWidget(layout, id), `${title} disembunyikan.`)

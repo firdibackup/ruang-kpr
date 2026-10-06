@@ -24,12 +24,12 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   const products = page.getByRole('list', { name: 'Produk KPR' }).getByRole('listitem')
   await expect(products).toHaveCount(4)
   await expectNoSecondary(page)
-  await page.getByRole('button', { name: /KPR Primary/ }).click()
+  await page.getByRole('button', { name: /Mulai Pengajuan KPR/ }).click()
 
   // Product is already chosen on Home: step 1 is personal data, the draft is created on its first save.
   await expect(page).toHaveURL(/apply\/primary\/1/)
   await expect(page.getByText('Bagian 1 dari 3 · Tentang Kamu')).toBeVisible()
-  await expect(page.getByText('10% selesai.')).toBeAttached()
+  await expect(page.getByText('0% selesai.', { exact: true })).toBeAttached()
   await page.getByLabel('NIK').fill('3174012345678901')
   await page.getByLabel('Tempat Lahir').fill('Bekasi')
   await page.getByLabel('Tanggal Lahir').fill('1996-04-12')
@@ -66,7 +66,7 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   // Going back to edit keeps the saved progress instead of dropping it.
   await page.getByRole('button', { name: 'Kembali', exact: true }).last().click()
   await expect(page).toHaveURL(/apply\/primary\/2/)
-  await expect(page.getByText('45% selesai.')).toBeAttached()
+  await expect(page.getByText('55% selesai.')).toBeAttached()
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
   await page.getByRole('button', { name: /Lanjut ke Tahap 2/ }).click()
 
@@ -89,7 +89,7 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   await expect(page).toHaveURL(/apply\/primary\/5/)
   await expect(page.getByRole('heading', { name: 'Tahap 2 selesai' })).toBeVisible()
   await expect(page.getByText('Program cocok')).toBeVisible()
-  await expect(page.getByText('75% selesai.')).toBeAttached()
+  await expect(page.getByText('80% selesai.')).toBeAttached()
   await page.getByRole('button', { name: /Lanjut ke Tahap 3/ }).click()
   await expect(page.getByRole('heading', { name: 'Dokumen pengajuan' })).toBeVisible()
   const inputs = page.locator('input[type=file]')

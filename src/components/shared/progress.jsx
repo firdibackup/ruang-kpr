@@ -111,6 +111,12 @@ export function StatusStepper({ steps, label = 'Tahapan pengajuan' }) {
                 {s.date}
                 <span className="sr-only"> — {s.state === 'done' ? 'selesai' : s.state === 'current' ? 'sedang berjalan' : s.state === 'rejected' ? 'ditolak' : 'belum'}</span>
               </span>
+              {s.eta && (
+                <span className="text-xs text-muted-foreground">
+                  <span className="sr-only">Estimasi </span>
+                  {s.eta}
+                </span>
+              )}
             </div>
           </li>
         )

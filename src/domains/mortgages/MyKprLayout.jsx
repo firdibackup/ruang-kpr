@@ -9,6 +9,7 @@ import { dateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
+import { PageTour } from '@/components/shared/PageTour'
 import { ConfirmDialog } from '@/components/shared/dialogs'
 import { EmptyState, ErrorPanel, Panel, PageSkeleton } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
@@ -125,12 +126,12 @@ export function MyKprLayout() {
 
   return (
     <>
-      <PageHeader title="KPR Saya" subtitle={`${m.bankName} · KPR ${m.scheme === 'sharia' ? 'Syariah' : 'Konvensional'}`} />
+      <PageHeader title="KPR Saya" subtitle={`${m.bankName} · KPR ${m.scheme === 'sharia' ? 'Syariah' : 'Konvensional'}`} actions={<PageTour id="my-kpr" seen={snap.toursSeen} />} />
       {hasApp && <KprSwitch current="mortgage" />}
       <TabsPrimitive.Root value={tab} onValueChange={(v) => navigate(`/my-kpr/${v}`)} className="flex flex-col gap-5">
         <TabsPrimitive.List aria-label="Detail KPR" className="relative flex w-full max-w-full gap-1 self-start overflow-x-auto rounded-full border border-border bg-card p-1 sm:w-fit">
           {TABS.map(([k, label]) => (
-            <TabsPrimitive.Trigger key={k} value={k} className="h-11 shrink-0 rounded-full px-[22px] text-sm font-bold text-ink-3 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 data-[state=active]:bg-primary data-[state=active]:text-white">
+            <TabsPrimitive.Trigger key={k} value={k} data-tour={`tab-${k}`} className="h-11 shrink-0 rounded-full px-[22px] text-sm font-bold text-ink-3 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 data-[state=active]:bg-primary data-[state=active]:text-white">
               {label}
             </TabsPrimitive.Trigger>
           ))}

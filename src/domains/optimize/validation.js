@@ -168,3 +168,18 @@ export function takeoverGaps(data, { today, mode }) {
     .filter(([, errors]) => Object.keys(errors).length)
     .map(([path]) => path)
 }
+
+// Gaps of a Take Over started from the monitored KPR (start page, Home shortcuts): bank choices wait for these.
+export function mortgageTakeoverGaps(m, snap, mode) {
+  const data = takeoverDataFromMortgage(m, { personal: snap.profile ?? {}, employment: { ...snap.profile, ...snap.finance }, goal: {} })
+  return takeoverGaps(data, { today: snap.clock, mode })
+}
+
+// Default goal from the monitored KPR: Explore's opportunity and Home's direct program lists. Top-up uses the
+// start page's defaults (Rp100 jt for renovation, tenor ≥ 20 years).
+export function defaultTakeoverGoal(m, mode = 'takeover') {
+  const tenorMonths = Math.min(300, Math.max(60, Math.round(m.remainingTenorMonths / 12) * 12))
+  return mode === 'topup'
+    ? { mode, goal: null, tenorMonths: Math.max(240, tenorMonths), requestedTopup: 100_000_000, purpose: 'renovation' }
+    : { mode, goal: 'lower_payment', tenorMonths }
+}

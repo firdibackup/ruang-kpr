@@ -1,6 +1,6 @@
 import { lazy } from 'react'
 import { WIDGET_VIEWS as SUMMARY_VIEWS } from '../dashboardWidgets'
-import { LastSimulationWidget, ReadingWidget, RecentActivityWidget, RemindersWidget } from './activity'
+import { ReadingWidget, RecentActivityWidget, RemindersWidget } from './activity'
 import { DtiWidget, EquityWidget, InterestLeftWidget } from './figures'
 import { FixedCountdownWidget, JourneyWidget, PaymentHistoryWidget } from './timeline'
 
@@ -11,6 +11,7 @@ const chart = (name) => lazy(() => import('./charts').then((mod) => ({ default: 
 export const WIDGET_VIEWS = {
   ...SUMMARY_VIEWS,
   balanceProjection: chart('BalanceProjectionWidget'),
+  amortizationChart: chart('AmortizationChartWidget'),
   floatingImpact: chart('FloatingImpactWidget'),
   paymentSplit: chart('PaymentSplitWidget'),
   yearlyBreakdown: chart('YearlyBreakdownWidget'),
@@ -22,6 +23,5 @@ export const WIDGET_VIEWS = {
   paymentHistory: PaymentHistoryWidget,
   reminders: RemindersWidget,
   recentActivity: RecentActivityWidget,
-  lastSimulation: LastSimulationWidget,
   reading: ReadingWidget,
 }

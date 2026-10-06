@@ -110,7 +110,7 @@ test('gallery: live previews per tab; a widget missing data unlocks via its form
 
   await page.getByRole('button', { name: 'Tambah widget' }).click()
   await gallery.getByRole('tab', { name: 'Grafik' }).click()
-  await expect(gallery.locator('.recharts-surface')).toHaveCount(4) // live chart previews
+  await expect(gallery.locator('.recharts-surface')).toHaveCount(5) // live chart previews
   await gallery.getByRole('button', { name: 'Tambah Proyeksi Sisa Pokok' }).click()
   await expect(widget(page, 'Proyeksi Sisa Pokok').locator('.recharts-surface')).toBeVisible()
   await page.getByRole('button', { name: 'Simpan' }).click()

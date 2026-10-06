@@ -2,15 +2,13 @@ import { Link } from "react-router-dom";
 import { ArrowRightIcon, BellIcon } from "lucide-react";
 import { api } from "@/data/api";
 import { useResource } from "@/lib/hooks";
-import { dateShort, rupiah, rupiahShort } from "@/lib/format";
+import { dateShort } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Chip, Panel, Skeleton } from "@/components/shared/ui";
 import { reminderSummary } from "@/domains/mortgages/ReminderSettingsForm";
-import { modeName } from "@/domains/optimize/shared";
 import {
   pickArticles,
-  simulationSummary,
   upcomingReminders,
 } from "./widgetData";
 
@@ -134,55 +132,6 @@ export function RecentActivityWidget() {
         Lihat semua
         <ArrowRightIcon className="size-[15px]" aria-hidden />
       </Link>
-    </Panel>
-  );
-}
-
-export function LastSimulationWidget({ simulation }) {
-  const s = simulationSummary(simulation);
-  return (
-    <Panel className="gap-2">
-      <span className="text-[13px] font-extrabold text-ink-3">
-        Simulasi Terakhir
-      </span>
-      {!s ? (
-        <>
-          <p className="text-[1.125em] font-extrabold">Belum ada simulasi</p>
-          <p className="text-[13px] leading-5 text-muted-foreground">
-            Bandingkan program Take Over lengkap dengan biaya pindah dan
-            break-even.
-          </p>
-          <Button asChild size="sm" className="mt-auto w-fit">
-            <Link to="/explore">Mulai simulasi</Link>
-          </Button>
-        </>
-      ) : (
-        <>
-          <p className="text-[13px] text-muted-foreground">
-            {modeName(s.mode)} · {s.count} program cocok
-          </p>
-          {s.best ? (
-            <>
-              <p className="text-[1.125em] leading-tight font-extrabold">
-                {s.best.bank}
-              </p>
-              <p className="text-[13px] text-ink-3">
-                {s.best.product} · {rupiah(s.best.payment)}/bln
-              </p>
-              {s.best.saving > 0 && (
-                <p className="text-[1.25em] font-extrabold text-success tabular">
-                  Hemat {rupiahShort(s.best.saving)}/bln
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-ink-3">Belum ada program yang cocok.</p>
-          )}
-          <Button asChild size="sm" variant="outline" className="mt-auto w-fit">
-            <Link to="/optimize/programs">Lanjutkan simulasi</Link>
-          </Button>
-        </>
-      )}
     </Panel>
   );
 }

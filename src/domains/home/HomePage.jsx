@@ -26,6 +26,7 @@ import { useResource } from "@/lib/hooks";
 import { dateShort, firstName, rupiah, tenorLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/AppShell";
+import { PageTour } from "@/components/shared/PageTour";
 import {
   ConfirmDialog,
   FormDialog,
@@ -113,6 +114,16 @@ export function HomePage() {
   const active = home.activeMortgage;
   const derived = active ? deriveMortgage(active, snap.clock) : null;
   const subtitle = SUBTITLE[home.state] ?? "Ini kondisi KPR kamu hari ini.";
+  const board = active && !app;
+  const emptyBoard = snap.dashboardLayout?.length === 0;
+  const tour =
+    home.state === "fresh"
+      ? "home-fresh"
+      : board
+        ? arranging
+          ? "home-arrange"
+          : "home-dashboard"
+        : null;
 
   return (
     <>
@@ -120,19 +131,27 @@ export function HomePage() {
         title={`${greeting()}, ${name} 👋`}
         subtitle={subtitle}
         actions={
-          active &&
-          !app &&
-          !arranging &&
-          snap.dashboardLayout?.length !== 0 && (
-            <Button
-              variant="neutral"
-              size="sm"
-              onClick={() => setArranging(true)}
-            >
-              <LayoutDashboardIcon aria-hidden />
-              Atur Dashboard
-            </Button>
-          )
+          <>
+            {tour && (
+              // Never over the wizard's success dialog, or the widget gallery an empty board opens.
+              <PageTour
+                id={tour}
+                seen={snap.toursSeen}
+                ready={!navState?.success && !emptyBoard}
+              />
+            )}
+            {board && !arranging && !emptyBoard && (
+              <Button
+                variant="neutral"
+                size="sm"
+                data-tour="arrange-dashboard"
+                onClick={() => setArranging(true)}
+              >
+                <LayoutDashboardIcon aria-hidden />
+                Atur Dashboard
+              </Button>
+            )}
+          </>
         }
       />
       {error && (
@@ -177,8 +196,8 @@ export function HomePage() {
         <MonitoringDashboard
           mortgage={active}
           derived={derived}
+          snap={snap}
           clock={snap.clock}
-          simulation={snap.simulation}
           layout={snap.dashboardLayout}
           arranging={arranging}
           onArrangingChange={setArranging}
@@ -240,7 +259,7 @@ function FreshProducts() {
   const [multiguna, setMultiguna] = useState(false);
   const products = [
     {
-      name: "KPR Primary",
+      name: "Mulai Pengajuan KPR",
       desc: "Beli rumah baru atau rumah bekas.",
       icon: "kpr-primary",
       go: () => navigate("/apply/primary/1"),
@@ -275,6 +294,7 @@ function FreshProducts() {
         </h2>
       </div>
       <ul
+        data-tour="products"
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
         aria-label="Produk KPR"
       >
@@ -331,7 +351,10 @@ function MonitoringEntry() {
     // Sits above the product hero so existing-KPR owners see their path first; compact on mobile so the hero stays near the fold.
     // Brand red deepening to burgundy with a soft top-right sheen: a highlight, not an error panel (those use danger-bg).
     // Brightest stop stays at brand red so white body text keeps ≥4.5:1 everywhere.
-    <section className="flex flex-wrap items-center gap-x-4 gap-y-4 rounded-card bg-[radial-gradient(60%_140%_at_88%_-25%,#ffffff26,transparent_70%),linear-gradient(120deg,#dc1c2e_0%,#b3141f_48%,#7a0d1c_100%)] p-5 text-white shadow-[0_14px_36px_-14px_#7a0d1c99] ring-1 ring-white/10 ring-inset sm:gap-x-5 sm:px-7 sm:py-6">
+    <section
+      data-tour="monitoring-entry"
+      className="flex flex-wrap items-center gap-x-4 gap-y-4 rounded-card bg-[radial-gradient(60%_140%_at_88%_-25%,#ffffff26,transparent_70%),linear-gradient(120deg,#dc1c2e_0%,#b3141f_48%,#7a0d1c_100%)] p-5 text-white shadow-[0_14px_36px_-14px_#7a0d1c99] ring-1 ring-white/10 ring-inset sm:gap-x-5 sm:px-7 sm:py-6"
+    >
       {/* Illustration carries ~18% transparent padding; the negative margin keeps the visible tile at the old icon footprint. */}
       <img
         src="/card-kpr.webp"
@@ -394,7 +417,7 @@ function HowItWorks() {
     },
   ];
   return (
-    <Panel>
+    <Panel data-tour="how-it-works">
       <PanelTitle sub="Empat langkah dari pilih produk sampai pengajuan ke bank.">
         Cara kerja
       </PanelTitle>

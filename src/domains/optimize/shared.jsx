@@ -13,7 +13,7 @@ export function useOptimize() {
   const res = useResource(() => api.dashboard.getSnapshot())
   const app = res.data ? activeApplication(res.data.applications) : null
   const takeover = app?.productType === 'takeover' ? app : null
-  const setApp = (next) => res.setData((s) => ({ ...s, applications: s.applications.map((a) => (a.id === next.id ? next : a)) }))
+  const setApp = (next) => res.setData((s) => ({ ...s, applications: [next, ...s.applications.filter((a) => a.id !== next.id)] }))
   return { ...res, snap: res.data, app: takeover, otherApp: app && !takeover ? app : null, setApp }
 }
 

@@ -56,7 +56,8 @@ export function MortgageSetupWizard() {
   const draft = snap.mortgages.find((m) => m.status === 'draft')
   const active = snap.mortgages.find((m) => m.status === 'active')
   const editingActive = !!edit && edit !== 'review' && !draft && !!active
-  const m = editingActive ? active : draft
+  // Nothing is stored until the first save: a new setup fills a blank draft that useSave creates on submit.
+  const m = editingActive ? active : (draft ?? (!active && !edit && n === 1 ? { status: 'draft' } : null))
   if (!m) return <Navigate to={active ? '/my-kpr/overview' : '/monitoring/intro'} replace />
   // Reminders of an active KPR are managed in Profile → Reminder.
   if (editingActive && n === 2) return <Navigate to="/profile/reminders" replace />
@@ -66,7 +67,7 @@ export function MortgageSetupWizard() {
   const returnTo = edit ? RETURN[edit] ?? '/my-kpr/overview' : null
   const backTo = returnTo ?? (n === 1 ? '/monitoring/intro' : '/monitoring/setup/1')
   const onSaved = (saved) => {
-    setData((s) => ({ ...s, mortgages: s.mortgages.map((x) => (x.id === saved.id ? saved : x)) }))
+    setData((s) => ({ ...s, mortgages: [saved, ...s.mortgages.filter((x) => x.id !== saved.id)] }))
     toast(edit ? 'Perubahan tersimpan.' : 'Tersimpan.')
     navigate(returnTo ?? `/monitoring/setup/${n + 1}`)
   }
@@ -152,7 +153,8 @@ function useSave(m, step, onSaved) {
     setSaving(true)
     setError('')
     try {
-      onSaved(await api.mortgages.saveSetupStep(m.id, { step, values }))
+      const id = m.id ?? (await api.mortgages.createSetup()).id
+      onSaved(await api.mortgages.saveSetupStep(id, { step, values }))
     } catch (e) {
       setError(e.message)
       setSaving(false)

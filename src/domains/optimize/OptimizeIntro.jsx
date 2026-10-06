@@ -1,10 +1,8 @@
-import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckIcon, ClockIcon, CloudCheckIcon, HandCoinsIcon, RepeatIcon, ShieldCheckIcon } from 'lucide-react'
-import { api } from '@/data/api'
 import { Button } from '@/components/ui/button'
 import { HouseIllustration } from '@/components/shared/HouseIllustration'
-import { Chip, ErrorPanel, Notice, PageSkeleton, Spinner } from '@/components/shared/ui'
+import { Chip, ErrorPanel, Notice, PageSkeleton } from '@/components/shared/ui'
 import { productName, resumePath } from '@/domains/applications/meta'
 import { OptimizeHeader, useOptimize } from './shared'
 
@@ -13,22 +11,10 @@ export function OptimizeIntro() {
   const mode = params.get('mode') === 'topup' ? 'topup' : 'takeover'
   const navigate = useNavigate()
   const { snap, app, otherApp, error, reload } = useOptimize()
-  const [pending, setPending] = useState(false)
-  const [apiError, setApiError] = useState('')
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   const activeMortgage = snap.mortgages.find((m) => m.status === 'active')
-
-  const start = async () => {
-    setPending(true)
-    setApiError('')
-    try {
-      await api.applications.create({ productType: 'takeover', mode })
-      navigate('/optimize/1')
-    } catch (e) {
-      setApiError(e.message)
-      setPending(false)
-    }
-  }
+  // The draft is created by saving Data pribadi, so backing out of it leaves nothing behind.
+  const start = () => navigate(`/optimize/1?mode=${mode}`)
 
   return (
     <>
@@ -77,7 +63,6 @@ export function OptimizeIntro() {
               Data dapat dilanjutkan nanti
             </span>
           </div>
-          {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
           {otherApp ? (
             <Notice tone="warn" title="Masih ada pengajuan lain" action={<Link className="text-[13px] font-bold text-primary underline" to={otherApp.status === 'draft' ? resumePath(otherApp) : '/my-kpr/application'}>Buka {productName(otherApp)}</Link>}>
               MVP mendukung satu pengajuan aktif. Selesaikan atau hapus pengajuan {productName(otherApp)} dulu.
@@ -95,8 +80,7 @@ export function OptimizeIntro() {
               Kami bisa langsung memakai data {activeMortgage.bankName} tanpa mengisi ulang data KPR lama.
             </Notice>
           ) : (
-            <Button className="w-fit" onClick={start} disabled={pending} aria-busy={pending}>
-              {pending && <Spinner />}
+            <Button className="w-fit" onClick={start}>
               Mulai
             </Button>
           )}

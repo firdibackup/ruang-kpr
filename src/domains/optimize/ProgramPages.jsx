@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowRightIcon, CircleCheckIcon, CircleXIcon, InfoIcon, SearchXIcon, TriangleAlertIcon } from 'lucide-react'
+import { ArrowRightIcon, CircleCheckIcon, CircleXIcon, InfoIcon, SearchXIcon, StarIcon, TriangleAlertIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { evaluateTakeoverProduct, TAKEOVER_SORTS } from '@/calculations/programs'
 import { useResource } from '@/lib/hooks'
@@ -264,7 +264,8 @@ function ProgramCard({ x, sim, onOpen }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {x.recommended && <Chip tone="info">{topup ? 'Rekomendasi' : 'Sesuai tujuan kamu'}</Chip>}
+          {x.recommended && <Chip tone="solid" icon={StarIcon}>Rekomendasi dari kami</Chip>}
+          {x.recommended && !topup && <Chip tone="info">Sesuai tujuan kamu</Chip>}
           <Chip tone={eligTone}>{eligLabel}</Chip>
           {sim.excludedProductIds.includes(x.productId) && <Chip tone="bad">Pernah ditolak</Chip>}
           {x.stale && <Chip tone="warn">Data perlu dicek ulang</Chip>}

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { CircleDotIcon } from 'lucide-react'
 import { api } from '@/data/api'
@@ -8,6 +9,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { Chip, Disclaimer, ErrorPanel, Panel, PageSkeleton, ProgressBar } from '@/components/shared/ui'
 import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/dashboardWidgets'
 import { deriveMortgage } from './derive'
+import { PropertyDialog } from './MyKprTabs'
 import { progressGap } from './setupMeta'
 
 const BAR = { ok: 'bg-success-strong', warn: 'bg-warning-accent', bad: 'bg-brand-red' }
@@ -16,6 +18,7 @@ const toneOf = (score) => (score >= 80 ? 'ok' : score >= 60 ? 'warn' : 'bad')
 export function HealthPage() {
   const navigate = useNavigate()
   const { data, error, reload } = useResource(() => api.dashboard.getSnapshot())
+  const [askProperty, setAskProperty] = useState(false)
   if (!data) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   const m = data.mortgages.find((x) => x.status === 'active')
   if (!m) return <Navigate to="/my-kpr" replace />
@@ -24,9 +27,9 @@ export function HealthPage() {
   if (!(d.income > 0)) return <Navigate to="/" replace />
   const h = d.health
   const weakest = h.components.filter((c) => c.score !== null).sort((a, b) => a.score - b.score)[0]
-  // One "Lengkapi" link per component that cannot be scored yet, each to the single place that field is asked.
+  // One "Lengkapi" action per component that cannot be scored yet; the property value opens the same pop-up as Home.
   const complete = {
-    ltv: { label: 'Isi nilai properti', to: '/my-kpr/property?edit=1' },
+    ltv: { label: 'Isi nilai properti', onClick: () => setAskProperty(true) },
     rate: { label: 'Isi jenis bunga', to: '/monitoring/setup/1?edit=mykpr' },
     progress: progressGap(m, 'mykpr'),
   }
@@ -62,17 +65,22 @@ export function HealthPage() {
           <ul className="flex flex-col">
             {h.components.map((c) => (
               <li key={c.key} className="flex flex-col gap-2 border-b border-line py-3.5 last:border-b-0">
-                <div className="flex justify-between text-[15px] font-extrabold">
+                <div className="flex items-center justify-between gap-3 text-[15px] font-extrabold">
                   <span>{c.name}</span>
-                  <span className={c.score === null ? 'text-muted-foreground' : c.score >= 80 ? 'text-success' : c.score >= 60 ? 'text-warning-text' : 'text-danger'}>{c.score === null ? 'Belum dapat dihitung' : `${c.score}/100`}</span>
+                  {c.score !== null ? (
+                    <span className={c.score >= 80 ? 'text-success' : c.score >= 60 ? 'text-warning-text' : 'text-danger'}>{c.score}/100</span>
+                  ) : complete[c.key].to ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link to={complete[c.key].to}>{complete[c.key].label}</Link>
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={complete[c.key].onClick}>
+                      {complete[c.key].label}
+                    </Button>
+                  )}
                 </div>
                 {c.score !== null && <ProgressBar value={c.score} label={`${c.name} ${c.score} dari 100`} barClassName={BAR[toneOf(c.score)]} />}
                 <span className="text-[13px] text-ink-3">{evidence[c.key]}</span>
-                {c.score === null && (
-                  <Link to={complete[c.key].to} className="flex min-h-11 w-fit items-center text-[13px] font-bold text-primary underline">
-                    {complete[c.key].label}
-                  </Link>
-                )}
               </li>
             ))}
           </ul>
@@ -98,6 +106,17 @@ export function HealthPage() {
           <Disclaimer>KPR Health bukan skor kredit dan tidak menentukan persetujuan bank.</Disclaimer>
         </section>
       </div>
+      {askProperty && (
+        <PropertyDialog
+          m={m}
+          clock={data.clock}
+          onClose={() => setAskProperty(false)}
+          onSaved={() => {
+            setAskProperty(false)
+            reload()
+          }}
+        />
+      )}
     </>
   )
 }

@@ -37,6 +37,7 @@ import {
   Panel,
   ProgressBar,
   Skeleton,
+  Spinner,
   SummaryRows,
 } from "@/components/shared/ui";
 import { progressGap, rateTypeLabel } from "@/domains/mortgages/setupMeta";
@@ -103,7 +104,7 @@ export function LockedPreview({ preview, title, children, action }) {
         }
         title={title}
         action={action}
-        className="justify-center bg-card/60 p-5 backdrop-blur-sm sm:p-6"
+        className="justify-center bg-card/60 p-5 backdrop-blur-[2px] sm:p-6"
       >
         <span className={SHORT_HIDDEN}>{children}</span>
       </EmptyState>
@@ -111,7 +112,14 @@ export function LockedPreview({ preview, title, children, action }) {
   );
 }
 
-function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
+function OpportunityWidget({
+  m,
+  d,
+  onAskIncome,
+  onAskProperty,
+  onOpenPrograms,
+  opening,
+}) {
   const navigate = useNavigate();
   const { data: explore, loading } = useResource(
     () => api.explore.get(),
@@ -163,7 +171,6 @@ function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
         // Example figures for the blurred preview, never the user's own.
         <div className="flex flex-col gap-2 @2xl:row-span-2">
           <OpportunityTile
-            to="/explore"
             label="POTENSI TAKE OVER"
             hasOpportunity
             value="−Rp1,2 jt"
@@ -171,12 +178,11 @@ function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
             note="Dibanding cicilan sekarang · break-even 14 bulan"
           />
           <OpportunityTile
-            to="/explore"
             label="POTENSI REFINANCING"
             hasOpportunity
             value="Rp162,4 jt"
             unit="dana kotor maksimum"
-            note="Nilai properti est. Rp850 jt × LTV 80% − sisa pokok Rp517,6 jt"
+            note="Nilai properti est. Rp850 jt × LTV 80% (sisa pokok Rp517,6 jt)"
           />
         </div>
       ) : loading && !explore ? (
@@ -187,7 +193,9 @@ function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
       ) : (
         <div className="flex flex-col gap-2 @2xl:row-span-2">
           <OpportunityTile
-            to="/explore"
+            onClick={() => onOpenPrograms("takeover")}
+            pending={opening === "takeover"}
+            disabled={!!opening}
             label="POTENSI TAKE OVER"
             hasOpportunity={!!opp?.cheaperProgramCount}
             value={
@@ -204,11 +212,13 @@ function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
             }
           />
           <OpportunityTile
-            to={
+            onClick={() =>
               opp?.maxGrossTopup != null
-                ? "/explore"
-                : "/my-kpr/property?edit=1"
+                ? onOpenPrograms("topup")
+                : navigate("/my-kpr/property?edit=1")
             }
+            pending={opening === "topup"}
+            disabled={!!opening}
             label="POTENSI REFINANCING"
             hasOpportunity={opp?.maxGrossTopup != null}
             value={
@@ -220,7 +230,7 @@ function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
             tone={opp?.maxGrossTopup != null ? "default" : "warn"}
             note={
               opp?.maxGrossTopup != null
-                ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% − sisa pokok ${rupiahShort(m.outstandingPrincipal)}`
+                ? `Nilai properti est. ${rupiahShort(m.property.estimatedValue)} × LTV ${opp.maxLtvBps / 100}% (sisa pokok ${rupiahShort(m.outstandingPrincipal)})`
                 : "Lengkapi nilai properti untuk melihat potensi dana cair."
             }
           />
@@ -253,8 +263,11 @@ function OpportunityWidget({ m, d, onAskIncome, onAskProperty }) {
   );
 }
 
+// Opens the bank list straight away (see MonitoringDashboard openPrograms).
 function OpportunityTile({
-  to,
+  onClick,
+  pending,
+  disabled,
   label,
   value,
   unit,
@@ -264,10 +277,13 @@ function OpportunityTile({
 }) {
   // A real opportunity gets the green spotlight; an empty one stays muted so the two read differently at a glance.
   return (
-    <Link
-      to={to}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-busy={pending}
       className={cn(
-        "flex flex-col gap-1.5 rounded-xl border px-4 py-3.5 transition duration-200",
+        "flex flex-col gap-1.5 rounded-xl border px-4 py-3.5 text-left transition duration-200 disabled:opacity-70",
         hasOpportunity
           ? "opp-gradient border-white/30 text-white shadow-opp hover:-translate-y-0.5 hover:shadow-opp-hover active:-translate-y-0.5 active:shadow-opp-hover"
           : "border-opp-mute-border bg-opp-mute hover:shadow-card",
@@ -282,7 +298,11 @@ function OpportunityTile({
         >
           {label}
         </span>
-        <ChevronRightIcon className="size-4" aria-hidden />
+        {pending ? (
+          <Spinner className="size-4" />
+        ) : (
+          <ChevronRightIcon className="size-4" aria-hidden />
+        )}
       </span>
       <span className="flex flex-wrap items-baseline gap-1.5">
         <span
@@ -313,7 +333,7 @@ function OpportunityTile({
       >
         {note}
       </span>
-    </Link>
+    </button>
   );
 }
 
