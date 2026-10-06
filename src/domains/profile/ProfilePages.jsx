@@ -1,32 +1,38 @@
 import { useCallback, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { BellIcon, BriefcaseIcon, LogOutIcon, PencilIcon, ShieldCheckIcon, UserIcon } from 'lucide-react'
+import { BellIcon, BriefcaseIcon, LogOutIcon, PencilIcon, ShieldCheckIcon, Trash2Icon, UserIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { useForm, useResource } from '@/lib/hooks'
-import { GENDERS, MARITAL, OCCUPATIONS, dateLong, initials, intInput, labelOf, maskNik, moneyInput, rupiah, toMoney } from '@/lib/format'
+import { GENDERS, MARITAL, OCCUPATIONS, dateLong, initials, labelOf, maskNik, rupiah, toMoney } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
 import { CheckboxField, DateField, ErrorSummary, FormGrid, MoneyField, NumberField, RadioCards, SelectField, TextAreaField, TextField } from '@/components/shared/fields'
-import { ConfirmDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { ConfirmDialog, FormDialog, UnsavedChangesGuard } from '@/components/shared/dialogs'
+import { WizardProgress } from '@/components/shared/progress'
 import { Disclaimer, ErrorPanel, IconBox, Notice, Panel, PageSkeleton, Spinner, SummaryRows } from '@/components/shared/ui'
 import { useSession } from '@/domains/session/SessionProvider'
+import { IN_PROCESS } from '@/domains/home/selectHomeState'
 import { ReminderSettingsForm, reminderSummary } from '@/domains/mortgages/ReminderSettingsForm'
-import { validateReminders } from '@/domains/mortgages/validation'
+import { filledOnly, validateReminders } from '@/domains/mortgages/validation'
 import { validateEmploymentBasic } from '@/domains/optimize/validation'
-import { validatePersonal } from '@/domains/applications/validation'
+import { profileFormValues, validatePersonal } from '@/domains/applications/validation'
 
 export function ProfilePage() {
   const navigate = useNavigate()
-  const { logout } = useSession()
+  const { logout, refresh } = useSession()
   const { data: snap, error, reload } = useResource(() => api.dashboard.getSnapshot())
   const [confirm, setConfirm] = useState(false)
+  const [del, setDel] = useState(false)
+  const [agreed, setAgreed] = useState(false)
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   const p = snap.profile ?? {}
   const f = snap.finance ?? {}
   const m = snap.mortgages.find((x) => x.status === 'active')
   const r = m ? reminderSummary(m.reminders, m.currentRateType === 'fixed' && m.fixedUntil > snap.clock) : null
   const incomplete = !p.nik || !p.birthDate || !p.occupation
+  // Same rule as auth.deleteAccount: an application at the bank can't lose its account.
+  const blocked = snap.applications.some((a) => IN_PROCESS.includes(a.status))
 
   return (
     <>
@@ -69,6 +75,10 @@ export function ProfilePage() {
                 { k: 'Penghasilan bulanan', v: f.monthlyIncome ? rupiah(f.monthlyIncome) : 'Belum diisi', tone: f.monthlyIncome ? undefined : 'mute' },
               ]}
             />
+            <Button variant="outline" size="md" className="mt-3 w-fit" onClick={() => navigate('/profile/edit', { state: { step: 2 } })}>
+              <PencilIcon aria-hidden />
+              {f.monthlyIncome ? 'Edit Penghasilan' : 'Isi Penghasilan'}
+            </Button>
             <Disclaimer className="pt-2">Mengubah profil tidak mengubah data pengajuan yang sudah dikirim ke bank.</Disclaimer>
           </Panel>
         </div>
@@ -106,10 +116,24 @@ export function ProfilePage() {
                 {c.type === 'terms' ? 'Syarat & Ketentuan' : 'Kebijakan Privasi'} v{c.version} · disetujui {dateLong(c.acceptedAt)}
               </span>
             ))}
-            <Button variant="neutral" size="md" className="mt-2 w-fit text-danger" onClick={() => setConfirm(true)}>
-              <LogOutIcon aria-hidden />
-              Keluar
-            </Button>
+            <div className="mt-2 flex flex-wrap gap-2.5">
+              <Button variant="neutral" size="md" className="w-fit text-danger" onClick={() => setConfirm(true)}>
+                <LogOutIcon aria-hidden />
+                Keluar
+              </Button>
+              <Button
+                variant="destructive-soft"
+                size="md"
+                className="w-fit"
+                onClick={() => {
+                  setAgreed(false)
+                  setDel(true)
+                }}
+              >
+                <Trash2Icon aria-hidden />
+                Hapus Akun
+              </Button>
+            </div>
           </Panel>
         </div>
       </div>
@@ -125,6 +149,41 @@ export function ProfilePage() {
           navigate('/register', { replace: true })
         }}
       />
+      {blocked ? (
+        <ConfirmDialog
+          open={del}
+          onOpenChange={setDel}
+          destructive={false}
+          title="Akun belum bisa dihapus"
+          body="Masih ada pengajuan yang sedang diproses bank. Batalkan atau tunggu sampai selesai sebelum menghapus akun."
+          confirmLabel="Lihat Pengajuan"
+          onConfirm={() => navigate('/my-kpr/application')}
+        />
+      ) : (
+        <ConfirmDialog
+          open={del}
+          onOpenChange={setDel}
+          title="Hapus akun RuangKPR?"
+          body="Semua data kamu di RuangKPR akan dihapus permanen dan tidak bisa dikembalikan:"
+          confirmLabel="Hapus Akun"
+          confirmDisabled={!agreed}
+          onConfirm={async () => {
+            await api.auth.deleteAccount()
+            await refresh()
+            toast('Akun kamu sudah dihapus.')
+            navigate('/register', { replace: true })
+          }}
+        >
+          <ul className="-mt-2 list-disc pl-5 text-sm leading-[21px] text-ink-3">
+            <li>Profil, data pribadi & penghasilan</li>
+            <li>KPR yang dipantau & pengaturan reminder</li>
+            <li>Draft pengajuan & hasil simulasi</li>
+            <li>Riwayat di Activity</li>
+          </ul>
+          <Disclaimer>Pengajuan yang sudah dikirim ke bank tetap tersimpan di bank sesuai ketentuan bank.</Disclaimer>
+          <CheckboxField label="Saya mengerti data ini tidak bisa dikembalikan." name="deleteConsent" checked={agreed} onChange={setAgreed} />
+        </ConfirmDialog>
+      )}
     </>
   )
 }
@@ -135,30 +194,46 @@ export function ProfileEditPage() {
   return <ProfileForm snap={snap} />
 }
 
+const PROFILE_STEPS = ['Data pribadi', 'Pekerjaan & penghasilan']
+
 function ProfileForm({ snap }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const p = snap.profile ?? {}
   const f = snap.finance ?? {}
   const validate = useCallback((v) => ({ ...validatePersonal(v, { today: snap.clock }), ...validateEmploymentBasic(v) }), [snap.clock])
-  const form = useForm(
-    {
-      fullName: p.fullName ?? '', nik: p.nik ?? '', birthPlace: p.birthPlace ?? '', birthDate: p.birthDate ?? '', gender: p.gender ?? '', maritalStatus: p.maritalStatus ?? '', address: p.address ?? '', phone: p.phone ?? '', email: p.email ?? '',
-      occupation: p.occupation ?? '', companyName: p.companyName ?? '', jobTitle: p.jobTitle ?? '', workYears: intInput(p.workYears), workMonths: intInput(p.workMonths), monthlyIncome: moneyInput(f.monthlyIncome), jointIncome: f.jointIncome ?? false, partnerIncome: moneyInput(f.partnerIncome),
-    },
-    validate,
-  )
+  const form = useForm(profileFormValues(p, f), validate)
+  // "Edit Penghasilan" opens step 2 directly, unless step 1 still has gaps that would block Simpan there.
+  const [step, setStep] = useState(() => (location.state?.step === 2 && !Object.keys(validatePersonal(form.values, { today: snap.clock })).length ? 2 : 1))
   const [saving, setSaving] = useState(false)
   const [apiError, setApiError] = useState('')
-  const v = form.values
   const contactField = snap.user?.contactType === 'email' ? 'email' : 'phone'
+  // Same as a route change in AppShell: back to the top, focus on <main> for screen readers.
+  const toStep = (n) => {
+    setStep(n)
+    window.scrollTo(0, 0)
+    document.getElementById('main')?.focus({ preventScroll: true })
+  }
+  // Step 1 only gates its own fields (marked via touch), so step 2 doesn't open already red.
+  const next = (e) => {
+    e.preventDefault()
+    const own = e.currentTarget
+    const bad = Object.keys(validatePersonal(form.values, { today: snap.clock }))
+    if (!bad.length) return toStep(2)
+    bad.forEach((k) => form.blur(k))
+    setTimeout(() => own.querySelector('[aria-invalid="true"]')?.focus(), 0)
+  }
   const onSubmit = form.submit(async (x) => {
     setSaving(true)
     setApiError('')
     try {
       await api.profile.update({
         fullName: x.fullName.trim(), nik: x.nik, birthPlace: x.birthPlace.trim(), birthDate: x.birthDate, gender: x.gender, maritalStatus: x.maritalStatus, address: x.address.trim(), phone: x.phone.replace(/[\s-]/g, ''), email: x.email.trim(),
-        occupation: x.occupation, companyName: x.companyName.trim(), jobTitle: x.jobTitle.trim(), workYears: Number(x.workYears), workMonths: Number(x.workMonths),
-        finance: { monthlyIncome: toMoney(x.monthlyIncome), jointIncome: x.jointIncome, partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null },
+        occupation: x.occupation.trim(), companyName: x.companyName.trim(), jobTitle: x.jobTitle.trim(), workYears: Number(x.workYears), workMonths: Number(x.workMonths),
+        finance: {
+          monthlyIncome: toMoney(x.monthlyIncome), jointIncome: x.jointIncome, partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
+          vehicleDebt: toMoney(x.vehicleDebt), cardDebt: toMoney(x.cardDebt), otherDebt: toMoney(x.otherDebt),
+        },
       })
       form.markClean()
       toast('Profil tersimpan.')
@@ -171,55 +246,146 @@ function ProfileForm({ snap }) {
   return (
     <>
       <PageHeader title="Edit profil" subtitle="Dipakai untuk mengisi otomatis pengajuan berikutnya." back="/profile" />
-      <form onSubmit={onSubmit} noValidate className="flex max-w-[860px] flex-col gap-5">
+      <form onSubmit={step === 1 ? next : onSubmit} noValidate className="flex max-w-[860px] flex-col gap-5">
         <UnsavedChangesGuard when={form.dirty && !saving} />
+        <WizardProgress label={`Langkah ${step} dari 2 · ${PROFILE_STEPS[step - 1]}`} steps={PROFILE_STEPS} current={step} savedLabel="Tersimpan setelah klik Simpan Profil" />
         <ErrorSummary show={form.showSummary} count={Object.keys(form.errors).length} />
-        <Notice tone="info">Perubahan tidak memengaruhi snapshot pengajuan yang sudah dikirim. Kontak terverifikasi ({contactField === 'email' ? 'email' : 'nomor ponsel'}) belum bisa diubah pada versi ini karena butuh verifikasi OTP ulang.</Notice>
-        <Panel className="gap-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <IconBox icon={UserIcon} />
-            <h2 className="text-lg font-extrabold">Data pribadi</h2>
-          </div>
-          <FormGrid>
-            <TextField label="Nama sesuai KTP" span {...form.bind('fullName')} />
-            <TextField label="NIK" inputMode="numeric" maxLength={16} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
-            <TextField label="Tempat lahir" {...form.bind('birthPlace')} />
-            <DateField label="Tanggal lahir" max={snap.clock} {...form.bind('birthDate')} />
-            <RadioCards label="Jenis kelamin" options={GENDERS} {...form.bind('gender')} />
-            <SelectField label="Status perkawinan" options={MARITAL} {...form.bind('maritalStatus')} />
-            <TextAreaField label="Alamat KTP" span {...form.bind('address')} />
-            <TextField label="Nomor ponsel" inputMode="tel" disabled={contactField === 'phone'} hint={contactField === 'phone' ? 'Kontak terverifikasi.' : ''} {...form.bind('phone')} />
-            <TextField label="Email" type="email" disabled={contactField === 'email'} hint={contactField === 'email' ? 'Kontak terverifikasi.' : ''} {...form.bind('email')} />
-          </FormGrid>
-        </Panel>
-        <Panel className="gap-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <IconBox icon={BriefcaseIcon} />
-            <h2 className="text-lg font-extrabold">Pekerjaan & penghasilan</h2>
-          </div>
-          <FormGrid>
-            <SelectField label="Jenis pekerjaan" options={OCCUPATIONS} span {...form.bind('occupation')} />
-            <TextField label="Nama perusahaan / usaha" {...form.bind('companyName')} />
-            <TextField label="Jabatan / bidang usaha" {...form.bind('jobTitle')} />
-            <NumberField label="Lama bekerja" suffix="tahun" {...form.bind('workYears')} />
-            <NumberField label="Tambahan bulan" suffix="bulan" {...form.bind('workMonths')} />
-            <MoneyField label="Penghasilan bulanan" span {...form.bind('monthlyIncome')} />
-            <CheckboxField label="Gabungkan pendapatan pasangan" span checked={v.jointIncome} onChange={(x) => form.setValues({ ...v, jointIncome: x, partnerIncome: x ? v.partnerIncome : '' })} />
-            {v.jointIncome && <MoneyField label="Penghasilan pasangan" span {...form.bind('partnerIncome')} />}
-          </FormGrid>
-        </Panel>
+        {step === 1 ? (
+          <>
+            <Notice tone="info">Perubahan tidak memengaruhi snapshot pengajuan yang sudah dikirim. Kontak terverifikasi ({contactField === 'email' ? 'email' : 'nomor ponsel'}) belum bisa diubah pada versi ini karena butuh verifikasi OTP ulang.</Notice>
+            <Panel className="gap-5 sm:p-7">
+              <div className="flex items-center gap-3">
+                <IconBox icon={UserIcon} />
+                <h2 className="text-lg font-extrabold">Data pribadi</h2>
+              </div>
+              <PersonalFields form={form} clock={snap.clock} contactField={contactField} />
+            </Panel>
+          </>
+        ) : (
+          <Panel className="gap-5 sm:p-7">
+            <div className="flex items-center gap-3">
+              <IconBox icon={BriefcaseIcon} />
+              <h2 className="text-lg font-extrabold">Pekerjaan & penghasilan</h2>
+            </div>
+            <FormGrid>
+              <JobFields form={form} />
+              <IncomeFields form={form} />
+            </FormGrid>
+          </Panel>
+        )}
         {apiError && <Notice tone="bad" role="alert">{apiError}</Notice>}
         <div className="flex justify-between gap-3">
-          <Button variant="neutral" onClick={() => navigate('/profile')}>
-            Batal
-          </Button>
+          {step === 1 ? (
+            <Button variant="neutral" onClick={() => navigate('/profile')}>
+              Batal
+            </Button>
+          ) : (
+            <Button variant="neutral" onClick={() => toStep(1)}>
+              Kembali
+            </Button>
+          )}
           <Button type="submit" disabled={saving} aria-busy={saving}>
             {saving && <Spinner />}
-            Simpan Profil
+            {step === 1 ? 'Lanjut' : 'Simpan Profil'}
           </Button>
         </div>
       </form>
     </>
+  )
+}
+
+// One form for the profile data Take Over reuses.
+// `required` lists the keys this form marks with *; each caller decides (the Home income pop-up asks only Penghasilan).
+export function PersonalFields({ form, clock, contactField, required = [] }) {
+  const req = (k) => required.includes(k)
+  return (
+    <FormGrid>
+      <TextField label="Nama sesuai KTP" required={req('fullName')} span {...form.bind('fullName')} />
+      <TextField label="NIK" required={req('nik')} inputMode="numeric" maxLength={16} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
+      <TextField label="Tempat lahir" required={req('birthPlace')} {...form.bind('birthPlace')} />
+      <DateField label="Tanggal lahir" required={req('birthDate')} max={clock} {...form.bind('birthDate')} />
+      <RadioCards label="Jenis kelamin" required={req('gender')} options={GENDERS} {...form.bind('gender')} />
+      <SelectField label="Status perkawinan" required={req('maritalStatus')} options={MARITAL} {...form.bind('maritalStatus')} />
+      <TextAreaField label="Alamat KTP" required={req('address')} span {...form.bind('address')} />
+      <TextField label="Nomor ponsel" required={req('phone')} inputMode="tel" disabled={contactField === 'phone'} hint={contactField === 'phone' ? 'Kontak terverifikasi.' : ''} {...form.bind('phone')} />
+      <TextField label="Email" required={req('email')} type="email" disabled={contactField === 'email'} hint={contactField === 'email' ? 'Kontak terverifikasi.' : ''} {...form.bind('email')} />
+    </FormGrid>
+  )
+}
+
+// Job and income are separate pieces (rendered inside a FormGrid) so the setup can put income first.
+export function JobFields({ form, required = [] }) {
+  const req = (k) => required.includes(k)
+  return (
+    <>
+      <SelectField label="Jenis pekerjaan" required={req('occupation')} options={OCCUPATIONS} other="Tulis jenis pekerjaan" span {...form.bind('occupation')} />
+      <TextField label="Nama perusahaan / usaha" required={req('companyName')} {...form.bind('companyName')} />
+      <TextField label="Jabatan / bidang usaha" required={req('jobTitle')} {...form.bind('jobTitle')} />
+      <NumberField label="Lama bekerja" required={req('workYears')} suffix="tahun" {...form.bind('workYears')} />
+      <NumberField label="Tambahan bulan" required={req('workMonths')} suffix="bulan" {...form.bind('workMonths')} />
+    </>
+  )
+}
+
+export function IncomeFields({ form, required = [] }) {
+  const req = (k) => required.includes(k)
+  const v = form.values
+  return (
+    <>
+      <MoneyField label="Penghasilan bulanan" required={req('monthlyIncome')} span {...form.bind('monthlyIncome')} />
+      <CheckboxField label="Gabungkan pendapatan pasangan" span checked={v.jointIncome} onChange={(x) => form.setValues({ ...v, jointIncome: x, partnerIncome: x ? v.partnerIncome : '' })} />
+      {v.jointIncome && <MoneyField label="Penghasilan pasangan" required={req('partnerIncome')} span {...form.bind('partnerIncome')} />}
+      <MoneyField label="Cicilan kendaraan" optional {...form.bind('vehicleDebt')} />
+      <MoneyField label="Kartu kredit / paylater" optional {...form.bind('cardDebt')} />
+      <MoneyField label="Pinjaman lain" optional span hint="Dipakai untuk rasio cicilan di KPR Health." {...form.bind('otherDebt')} />
+    </>
+  )
+}
+
+const INCOME = ['monthlyIncome', 'jointIncome', 'partnerIncome', 'vehicleDebt', 'cardDebt', 'otherDebt']
+const INCOME_REQUIRED = ['monthlyIncome', 'partnerIncome']
+const validateIncome = (v) => filledOnly(validateEmploymentBasic(v), v, INCOME_REQUIRED)
+
+// Unlocks KPR Health on Home: Penghasilan is the only required field, the other debts sharpen the ratio.
+export function IncomeDialog({ finance, onClose, onSaved }) {
+  const initial = profileFormValues({}, finance ?? {})
+  const form = useForm(Object.fromEntries(INCOME.map((k) => [k, initial[k]])), validateIncome)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const onSubmit = form.submit(async (x) => {
+    setSaving(true)
+    setError('')
+    try {
+      await api.profile.update({
+        finance: {
+          monthlyIncome: toMoney(x.monthlyIncome),
+          jointIncome: x.jointIncome,
+          partnerIncome: x.jointIncome ? toMoney(x.partnerIncome) : null,
+          vehicleDebt: toMoney(x.vehicleDebt),
+          cardDebt: toMoney(x.cardDebt),
+          otherDebt: toMoney(x.otherDebt),
+        },
+      })
+      toast('Penghasilan tersimpan.')
+      onSaved()
+    } catch (e) {
+      setError(e.message)
+      setSaving(false)
+    }
+  })
+  return (
+    <FormDialog open onOpenChange={(open) => !open && !saving && onClose()} title="Isi penghasilan" description="Dipakai untuk rasio beban cicilan di KPR Health. Cicilan lain boleh dikosongkan." className="max-w-[560px]">
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        <FormGrid>
+          <IncomeFields form={form} required={INCOME_REQUIRED} />
+        </FormGrid>
+        {error && <Notice tone="bad" role="alert">{error}</Notice>}
+        <Button type="submit" disabled={saving} aria-busy={saving}>
+          {saving && <Spinner />}
+          {saving ? 'Menyimpan…' : 'Simpan Penghasilan'}
+        </Button>
+      </form>
+    </FormDialog>
   )
 }
 

@@ -39,6 +39,7 @@ import { deriveMortgage } from "@/domains/mortgages/derive";
 import { RejectedActions } from "./RejectedActions";
 import {
   STATUS_LABEL,
+  keptDataNote,
   productName,
   resumePath,
   stepsOf,
@@ -187,7 +188,8 @@ function DraftChecklist({ app, onDeleted }) {
         open={confirm}
         onOpenChange={setConfirm}
         title="Hapus draft pengajuan?"
-        body="Data yang sudah diisi dan dokumen yang diunggah akan dihapus permanen."
+        body="Draft dan dokumen yang diunggah akan dihapus permanen."
+        note={keptDataNote(app)}
         onConfirm={async () => {
           await api.applications.cancel(app.id);
           toast("Draft dihapus.");
@@ -565,7 +567,8 @@ function Tracker({ app, snap, onChange, reload }) {
         open={cancel}
         onOpenChange={setCancel}
         title="Yakin batalkan pengajuan ini?"
-        body={`Pengajuan akan ditarik dari ${s?.bankName}. Data pengajuan dan dokumen terkait dihapus permanen (keputusan produk saat ini; kebijakan retensi final menunggu review kepatuhan).`}
+        body={`Pengajuan akan ditarik dari ${s?.bankName}. Pengajuan dan dokumen terkait dihapus permanen (keputusan produk saat ini; kebijakan retensi final menunggu review kepatuhan).`}
+        note={keptDataNote(app)}
         confirmLabel="Ya, Batalkan"
         onConfirm={async () => {
           await api.applications.cancel(app.id);

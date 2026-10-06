@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowRightIcon,
   BanknoteIcon,
-  BellRingIcon,
   CircleXIcon,
   ClockIcon,
   CloudCheckIcon,
@@ -12,6 +11,7 @@ import {
   GitCompareIcon,
   LandmarkIcon,
   LayersIcon,
+  LayoutDashboardIcon,
   PercentIcon,
   ReceiptIcon,
   RepeatIcon,
@@ -26,8 +26,13 @@ import { useResource } from "@/lib/hooks";
 import { dateShort, firstName, rupiah, tenorLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/AppShell";
-import { ConfirmDialog, FormDialog } from "@/components/shared/dialogs";
-import { StatusStepper, stepPercent } from "@/components/shared/progress";
+import { PageTour } from "@/components/shared/PageTour";
+import {
+  ConfirmDialog,
+  FormDialog,
+  SuccessDialog,
+} from "@/components/shared/dialogs";
+import { StatusStepper } from "@/components/shared/progress";
 import {
   Chip,
   ErrorPanel,
@@ -41,13 +46,18 @@ import {
 } from "@/components/shared/ui";
 import { RejectedActions } from "@/domains/applications/RejectedActions";
 import {
+  draftProgress,
+  keptDataNote,
   productName,
   resumePath,
-  stepsOf,
   trackerSteps,
 } from "@/domains/applications/meta";
 import { deriveMortgage } from "@/domains/mortgages/derive";
-import { SETUP_STEPS } from "@/domains/mortgages/setupMeta";
+import {
+  SETUP_PERCENT,
+  SETUP_STEPS,
+  setupStepOf,
+} from "@/domains/mortgages/setupMeta";
 import { MonitoringDashboard } from "./MonitoringDashboard";
 import { selectHomeState } from "./selectHomeState";
 
@@ -63,7 +73,7 @@ const greeting = () => {
 };
 
 const SUBTITLE = {
-  fresh: "Siap ajukan KPR pertamamu?",
+  fresh: "Pantau KPR yang sudah berjalan, atau ajukan KPR baru.",
   application_draft: "Pengajuan kamu tersimpan. Lanjutkan kapan saja.",
   application_in_process: "Ini kabar pengajuan KPR kamu hari ini.",
   application_rejected: "Ada kabar dari bank soal pengajuan kamu.",
@@ -79,12 +89,15 @@ const ARTICLE_ICONS = {
 };
 
 export function HomePage() {
+  const { state: navState } = useLocation();
+  const navigate = useNavigate();
   const {
     data: snap,
     error,
     loading,
     reload,
   } = useResource(() => api.dashboard.getSnapshot());
+  const [arranging, setArranging] = useState(false);
   const name = firstName(snap?.user?.name);
 
   if (!snap) {
@@ -101,10 +114,46 @@ export function HomePage() {
   const active = home.activeMortgage;
   const derived = active ? deriveMortgage(active, snap.clock) : null;
   const subtitle = SUBTITLE[home.state] ?? "Ini kondisi KPR kamu hari ini.";
+  const board = active && !app;
+  const emptyBoard = snap.dashboardLayout?.length === 0;
+  const tour =
+    home.state === "fresh"
+      ? "home-fresh"
+      : board
+        ? arranging
+          ? "home-arrange"
+          : "home-dashboard"
+        : null;
 
   return (
     <>
-      <PageHeader title={`${greeting()}, ${name} 👋`} subtitle={subtitle} />
+      <PageHeader
+        title={`${greeting()}, ${name} 👋`}
+        subtitle={subtitle}
+        actions={
+          <>
+            {tour && (
+              // Never over the wizard's success dialog, or the widget gallery an empty board opens.
+              <PageTour
+                id={tour}
+                seen={snap.toursSeen}
+                ready={!navState?.success && !emptyBoard}
+              />
+            )}
+            {board && !arranging && !emptyBoard && (
+              <Button
+                variant="neutral"
+                size="sm"
+                data-tour="arrange-dashboard"
+                onClick={() => setArranging(true)}
+              >
+                <LayoutDashboardIcon aria-hidden />
+                Atur Dashboard
+              </Button>
+            )}
+          </>
+        }
+      />
       {error && (
         <ErrorPanel
           title="Data mungkin belum terbaru."
@@ -129,7 +178,12 @@ export function HomePage() {
       {home.state === "mortgage_setup_draft" && (
         <MortgageDraftHero mortgage={home.mortgage} onDeleted={reload} />
       )}
-      {home.state === "fresh" && <FreshProducts />}
+      {home.state === "fresh" && (
+        <>
+          <MonitoringEntry />
+          <FreshProducts />
+        </>
+      )}
 
       {active && (app || home.state === "mortgage_setup_draft") ? (
         <ActiveMortgageMini
@@ -142,14 +196,61 @@ export function HomePage() {
         <MonitoringDashboard
           mortgage={active}
           derived={derived}
+          snap={snap}
+          clock={snap.clock}
+          layout={snap.dashboardLayout}
+          arranging={arranging}
+          onArrangingChange={setArranging}
           onChanged={reload}
         />
       )}
 
-      {home.state === "fresh" && <MonitoringEntry />}
       {!active && home.state !== "application_in_process" && <HowItWorks />}
       {!active && <Insights />}
+
+      {navState?.success && (
+        <FlowSuccess
+          success={navState.success}
+          applications={snap.applications}
+          onClose={() => navigate(".", { replace: true, state: null })}
+        />
+      )}
     </>
+  );
+}
+
+// Shown once after a wizard finishes (wizards navigate to "/" with `state.success`).
+function FlowSuccess({ success, applications, onClose }) {
+  if (success.appId) {
+    const app = applications.find((a) => a.id === success.appId);
+    if (!app) return null;
+    return (
+      <SuccessDialog
+        title="Pengajuan berhasil dikirim"
+        body={
+          <>
+            {productName(app)} ke {app.selection.bankName}. Tahap berikutnya:{" "}
+            <b>verifikasi dokumen</b>. Kami kabari lewat Activity dan email.
+          </>
+        }
+        onClose={onClose}
+      />
+    );
+  }
+  return (
+    <SuccessDialog
+      title="Pemantauan KPR aktif"
+      body={
+        success.scheduled
+          ? `Reminder pertama sudah dijadwalkan (${success.scheduled} pengingat terjadwal).`
+          : "Data KPR kamu tersimpan. Atur reminder kapan saja di Profil."
+      }
+      onClose={onClose}
+    >
+      <p className="text-xs text-muted-foreground">
+        Tidak ada pengajuan yang dibuat dan tidak ada data yang dikirim ke bank.
+      </p>
+    </SuccessDialog>
   );
 }
 
@@ -158,7 +259,7 @@ function FreshProducts() {
   const [multiguna, setMultiguna] = useState(false);
   const products = [
     {
-      name: "KPR Primary",
+      name: "Mulai Pengajuan KPR",
       desc: "Beli rumah baru atau rumah bekas.",
       icon: "kpr-primary",
       go: () => navigate("/apply/primary/1"),
@@ -193,6 +294,7 @@ function FreshProducts() {
         </h2>
       </div>
       <ul
+        data-tour="products"
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
         aria-label="Produk KPR"
       >
@@ -246,30 +348,38 @@ function FreshProducts() {
 
 function MonitoringEntry() {
   return (
-    // Second entry point after the product hero: a primary-tinted surface so it reads as an offer, not a footnote.
-    <section className="flex flex-wrap items-center gap-x-5 gap-y-4 rounded-card border border-primary/20 bg-[linear-gradient(100deg,#dbe6f8_0%,var(--secondary)_50%,#f3f7fe_100%)] p-5 shadow-card sm:px-7 sm:py-6">
-      <span className="relative shrink-0 self-start sm:self-center">
-        <IconBox
-          icon={BellRingIcon}
-          size="xl"
-          tone="solid"
-          className="shadow-[0_8px_18px_#003da53d]"
-        />
-        <span
-          className="absolute -top-1 -right-1 size-3.5 rounded-full bg-brand-red ring-[3px] ring-[#dbe6f8]"
-          aria-hidden
-        />
-      </span>
-      <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+    // Sits above the product hero so existing-KPR owners see their path first; compact on mobile so the hero stays near the fold.
+    // Brand red deepening to burgundy with a soft top-right sheen: a highlight, not an error panel (those use danger-bg).
+    // Brightest stop stays at brand red so white body text keeps ≥4.5:1 everywhere.
+    <section
+      data-tour="monitoring-entry"
+      className="flex flex-wrap items-center gap-x-4 gap-y-4 rounded-card bg-[radial-gradient(60%_140%_at_88%_-25%,#ffffff26,transparent_70%),linear-gradient(120deg,#dc1c2e_0%,#b3141f_48%,#7a0d1c_100%)] p-5 text-white shadow-[0_14px_36px_-14px_#7a0d1c99] ring-1 ring-white/10 ring-inset sm:gap-x-5 sm:px-7 sm:py-6"
+    >
+      {/* Illustration carries ~18% transparent padding; the negative margin keeps the visible tile at the old icon footprint. */}
+      <img
+        src="/card-kpr.webp"
+        alt=""
+        width={800}
+        height={800}
+        decoding="async"
+        className="-m-2 size-20 shrink-0 sm:-m-3 sm:size-32"
+      />
+      <div className="flex min-w-0 flex-1 basis-[180px] flex-col gap-1.5">
         <h2 className="text-lg leading-6 font-extrabold">
           Sudah punya KPR yang berjalan?
         </h2>
-        <p className="max-w-[62ch] text-sm leading-[21px] text-ink-3">
+        {/* Full white: translucent white drops under 4.5:1 on brand red. */}
+        <p className="max-w-[62ch] text-sm leading-[21px]">
           Pantau cicilan, dapatkan reminder sebelum bunga floating, dan lihat
           kondisi KPR kamu dalam satu tempat.
         </p>
       </div>
-      <Button asChild size="md" className="w-full sm:w-auto">
+      <Button
+        asChild
+        variant="inverse"
+        size="md"
+        className="w-full text-brand-red hover:bg-danger-bg focus-visible:ring-white/70 sm:w-auto"
+      >
         <Link to="/monitoring/intro">
           Pantau KPR Saya
           <ArrowRightIcon aria-hidden />
@@ -307,7 +417,7 @@ function HowItWorks() {
     },
   ];
   return (
-    <Panel>
+    <Panel data-tour="how-it-works">
       <PanelTitle sub="Empat langkah dari pilih produk sampai pengajuan ke bank.">
         Cara kerja
       </PanelTitle>
@@ -414,8 +524,8 @@ function HeroProgress({ value, label, className }) {
 function DraftHero({ app, onDeleted }) {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
-  const steps = stepsOf(app);
-  const step = Math.min(app.currentStep, steps.length);
+  // Same phase, label and percent the wizard shows (Primary and Take Over).
+  const progress = draftProgress(app);
   return (
     <HeroCard className="gap-[18px]">
       <Chip tone="glass" icon={FilePenLineIcon}>
@@ -426,16 +536,16 @@ function DraftHero({ app, onDeleted }) {
           Lanjutkan pengajuan kamu
         </h2>
         <p className="text-[15px] text-white/80">
-          {productName(app)} · Step {step} dari {steps.length}
+          {productName(app)} · Bagian {progress.phase} dari 3
         </p>
-        <p className="text-[15px] font-bold">{steps[step - 1]}</p>
+        <p className="text-[15px] font-bold">{progress.label}</p>
         <p className="flex items-center gap-1.5 text-[13px] text-white/80">
           <CloudCheckIcon className="size-4" aria-hidden />
           Terakhir disimpan {dateShort(app.updatedAt)}
         </p>
       </div>
       <HeroProgress
-        value={stepPercent(step, steps.length)}
+        value={progress.percent}
         label="Progres pengajuan"
         className="max-w-[620px]"
       />
@@ -461,6 +571,7 @@ function DraftHero({ app, onDeleted }) {
         onOpenChange={setConfirm}
         title="Hapus draft pengajuan?"
         body={`Draft ${productName(app)} beserta dokumen yang sudah diunggah akan dihapus permanen.`}
+        note={keptDataNote(app)}
         onConfirm={async () => {
           await api.applications.cancel(app.id);
           toast("Draft dihapus.");
@@ -474,7 +585,7 @@ function DraftHero({ app, onDeleted }) {
 function MortgageDraftHero({ mortgage, onDeleted }) {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
-  const step = Math.min(mortgage.setupStep, 6);
+  const step = setupStepOf(mortgage);
   return (
     <HeroCard className="grid gap-7 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="flex min-w-0 flex-col gap-3.5">
@@ -486,10 +597,10 @@ function MortgageDraftHero({ mortgage, onDeleted }) {
           Lanjutkan pengaturan KPR kamu
         </h2>
         <p className="text-[15px] font-semibold text-white/90">
-          Step {step} dari 6 — {SETUP_STEPS[step - 1]}
+          Bagian {step} dari {SETUP_STEPS.length} · {SETUP_STEPS[step - 1]}
         </p>
         <HeroProgress
-          value={stepPercent(step, 6)}
+          value={SETUP_PERCENT[step - 1]}
           label="Progres pengaturan KPR"
           className="max-w-[580px]"
         />

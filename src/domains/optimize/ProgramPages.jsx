@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowRightIcon, CircleCheckIcon, CircleXIcon, InfoIcon, SearchXIcon, TriangleAlertIcon } from 'lucide-react'
+import { ArrowRightIcon, CircleCheckIcon, CircleXIcon, InfoIcon, SearchXIcon, StarIcon, TriangleAlertIcon } from 'lucide-react'
 import { api } from '@/data/api'
 import { evaluateTakeoverProduct, TAKEOVER_SORTS } from '@/calculations/programs'
 import { useResource } from '@/lib/hooks'
@@ -9,9 +9,12 @@ import { PURPOSES, dateShort, labelOf, monthYear, percentBps, percentRatio, rupi
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/domains/applications/PrimaryCompare'
-import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
+import { BankMark, Chip, Disclaimer, EmptyState, ErrorPanel, EstimateTag, HeroCard, LoadingCards, Notice, Panel, PageSkeleton, Spinner, StatTile, SummaryRows } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
-import { OptimizeHeader, modeName } from './shared'
+import { takeoverScreenOf } from '@/domains/applications/meta'
+import { HEALTH_SENTENCE, HealthRing } from '@/domains/home/dashboardWidgets'
+import { applicationHealth, simulationTeaser } from './insights'
+import { OptimizeHeader, modeName, useOptimize } from './shared'
 
 const ELIG = { estimated_eligible: ['Estimasi layak', 'ok'], needs_review: ['Perlu ditinjau', 'warn'], not_eligible: ['Berisiko ditolak', 'bad'] }
 const COST_LABEL = {
@@ -32,7 +35,8 @@ function useSimulation(sort) {
     const app = activeApplication(snap.applications)
     const draft = app?.productType === 'takeover' && app.status === 'draft' && app.currentStep >= 6 ? app : null
     if (draft && snap.simulation?.source?.id !== draft.id) await api.simulations.run({ source: { type: 'application', id: draft.id }, input: draft.data.goal })
-    return api.simulations.getCurrent({ sort })
+    // `draft` rides along so the progress keeps the furthest saved screen (Dokumen/Review) when revisiting programs.
+    return { ...(await api.simulations.getCurrent({ sort })), draft }
   }, [sort])
 }
 
@@ -62,12 +66,38 @@ function NoSimulation({ error, onRetry }) {
 
 function Header({ sim, title, subtitle, back }) {
   const fromApp = sim?.source.type === 'application'
-  return <OptimizeHeader n={fromApp ? 5 : null} comparePhase title={title} subtitle={subtitle} back={back} />
+  return <OptimizeHeader screen={fromApp ? 7 : null} reached={sim?.draft ? takeoverScreenOf(sim.draft) : 7} title={title} subtitle={subtitle} back={back} />
+}
+
+// Phase 2 milestone (application flow only): the now-complete KPR Health score + one teaser from the simulation.
+function PhaseTwoBanner({ sim, app, clock }) {
+  const h = applicationHealth(app.data, clock, app.data.property?.estimatedValue ?? null)
+  const weakest = h.components.filter((x) => x.score !== null).sort((a, b) => a.score - b.score)[0]
+  // Same sentence logic as the Properti step's HealthAside.
+  const sentence = h.score >= 80 ? 'Kondisi KPR kamu sehat.' : weakest?.key === 'rate' && h.rate.mode === 'floating' ? 'Bunga kamu sudah floating.' : HEALTH_SENTENCE[weakest?.key]
+  return (
+    <section aria-labelledby="phase2-title" className="flex flex-col gap-4 rounded-card bg-card p-6 shadow-card sm:flex-row sm:items-center sm:p-7">
+      <HealthRing health={h} size={88} />
+      <div className="flex min-w-0 flex-col items-start gap-1.5">
+        <h2 id="phase2-title" className="flex items-center gap-2 text-lg font-extrabold">
+          <CircleCheckIcon className="size-5 text-success-strong" aria-hidden />
+          Tahap 2 selesai
+        </h2>
+        <Chip tone={h.tone}>
+          Kesehatan KPR: {h.label}
+          {h.partial ? ' · parsial' : ''}
+        </Chip>
+        {sentence && <p className="text-[13px] leading-5 font-semibold text-ink-2">{sentence}</p>}
+        <p className="text-sm font-bold text-primary">{simulationTeaser(sim)}</p>
+      </div>
+    </section>
+  )
 }
 
 export function BaselinePage() {
   const navigate = useNavigate()
   const { data: sim, error, reload, loading } = useSimulation()
+  const { app, snap } = useOptimize() // the draft behind an application simulation, for the phase 2 banner
   if (!sim) return loading ? <PageSkeleton /> : <NoSimulation error={error} onRetry={reload} />
   const b = sim.baseline
   const topup = sim.input.mode === 'topup'
@@ -75,6 +105,7 @@ export function BaselinePage() {
   return (
     <>
       <Header sim={sim} title="Kondisi KPR kamu" subtitle="Pembanding sebelum melihat program bank baru." back={back} />
+      {sim.source.type === 'application' && app && <PhaseTwoBanner sim={sim} app={app} clock={snap.clock} />}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="gap-5 sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -150,18 +181,18 @@ export function ProgramsPage() {
   return (
     <>
       <Header sim={sim} title={`Pilihan ${modeName(sim.input.mode)}`} subtitle="Estimasi berdasarkan profil kamu. Pilih satu program." back="/optimize/baseline" />
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-border bg-card px-[22px] py-[18px]">
+      <HeroCard scenery={false} className="flex-row flex-wrap items-center justify-between gap-4 px-[22px] py-[18px] sm:px-[22px] sm:py-[18px]">
         <div className="flex items-center gap-3">
-          <BankMark mark={markOf(sim.oldBank.name)} tone="muted" size="sm" />
+          <BankMark mark={markOf(sim.oldBank.name)} tone="glass" size="sm" />
           <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-bold text-muted-foreground">Pembanding · KPR saat ini</span>
+            <span className="text-xs font-bold text-white/80">Pembanding · KPR saat ini</span>
             <span className="text-sm font-bold">
               {sim.oldBank.name} · {rupiah(b.currentPayment)}/bln · {percentBps(b.rateBps)} · {b.remainingMonths} bulan
             </span>
           </div>
         </div>
-        {topup && <Chip tone="info">Butuh {rupiahShort(sim.input.requestedTopup)} · {labelOf(PURPOSES, sim.input.purpose)}</Chip>}
-      </div>
+        {topup && <Chip tone="glass">Butuh {rupiahShort(sim.input.requestedTopup)} · {labelOf(PURPOSES, sim.input.purpose)}</Chip>}
+      </HeroCard>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <span className="text-[15px] font-bold text-ink-3">{sim.items.length} program sesuai estimasi profil</span>
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Urutkan program">
@@ -233,7 +264,8 @@ function ProgramCard({ x, sim, onOpen }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {x.recommended && <Chip tone="info">{topup ? 'Rekomendasi' : 'Sesuai tujuan kamu'}</Chip>}
+          {x.recommended && <Chip tone="solid" icon={StarIcon}>Rekomendasi dari kami</Chip>}
+          {x.recommended && !topup && <Chip tone="info">Sesuai tujuan kamu</Chip>}
           <Chip tone={eligTone}>{eligLabel}</Chip>
           {sim.excludedProductIds.includes(x.productId) && <Chip tone="bad">Pernah ditolak</Chip>}
           {x.stale && <Chip tone="warn">Data perlu dicek ulang</Chip>}
@@ -399,7 +431,6 @@ function ProgramDetail({ sim, item }) {
                     { k: `Net saving sampai ${tenorLabel(x.horizonMonths)}`, v: rupiah(x.netSaving), tone: x.netSaving >= 0 ? 'ok' : 'bad' },
                     { k: 'Total bunga', v: rupiah(x.totalInterest) },
                     { k: 'Estimasi DTI', v: `${percentRatio(x.dtiRatio)} (batas ${x.maxDtiBps / 100}%)`, tone: eligTone },
-                    x.fundsCoverCosts !== null && { k: 'Dana kamu untuk biaya', v: x.fundsCoverCosts ? 'Cukup' : 'Kurang', tone: x.fundsCoverCosts ? 'ok' : 'warn' },
                   ]
             }
           />

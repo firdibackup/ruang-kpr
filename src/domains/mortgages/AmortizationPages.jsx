@@ -7,6 +7,7 @@ import { dateShort, monthYear, percentBps, rupiah, rupiahShort, tenorLabel } fro
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
+import { PageTour } from '@/components/shared/PageTour'
 import { Disclaimer, ErrorPanel, Notice, Panel, PageSkeleton, StatTile, SummaryRows } from '@/components/shared/ui'
 import { deriveMortgage } from './derive'
 
@@ -22,7 +23,7 @@ function PartialSchedule({ d }) {
   const navigate = useNavigate()
   if (d.scheduleError) {
     return (
-      <Notice tone="bad" title="Jadwal amortisasi belum dapat dihitung." action={<Button size="xs" onClick={() => navigate('/monitoring/setup/2?edit=mykpr')}>Perbaiki Data</Button>}>
+      <Notice tone="bad" title="Jadwal amortisasi belum dapat dihitung." action={<Button size="xs" onClick={() => navigate('/monitoring/setup/1?edit=mykpr')}>Perbaiki Data</Button>}>
         {d.scheduleError.message} Periksa sisa pokok, tenor, dan periode bunga.
       </Notice>
     )
@@ -31,7 +32,7 @@ function PartialSchedule({ d }) {
     <section className="flex flex-col items-start gap-2.5 rounded-card border border-warning-border bg-card p-7">
       <h2 className="text-[17px] font-extrabold">Jadwal belum bisa dihitung lengkap.</h2>
       <p className="text-sm text-ink-3">Data yang belum tersedia: {d.scheduleMissing.join(', ')}. Kami tidak menampilkan jadwal perkiraan tanpa data ini.</p>
-      <Button size="md" onClick={() => navigate('/monitoring/setup/2?edit=mykpr')}>
+      <Button size="md" onClick={() => navigate('/monitoring/setup/1?edit=mykpr')}>
         Lengkapi Data Bunga
       </Button>
     </section>
@@ -43,7 +44,7 @@ export function AmortizationPage() {
   if (!data) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   if (!m) return <Navigate to="/my-kpr" replace />
   const s = d.schedule
-  const header = <PageHeader title="Jadwal Amortisasi" subtitle={`${m.bankName} · KPR Aktif`} crumb="KPR Saya › Payment › Amortisasi" back="/my-kpr/payment" />
+  const header = <PageHeader title="Jadwal Amortisasi" subtitle={`${m.bankName} · KPR Aktif`} crumb="KPR Saya › Payment › Amortisasi" back="/my-kpr/payment" actions={s && <PageTour id="amortization" seen={data.toursSeen} />} />
   if (!s) {
     return (
       <>
@@ -59,7 +60,7 @@ export function AmortizationPage() {
     <>
       {header}
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
-        <Panel className="gap-1 sm:p-7">
+        <Panel data-tour="amort-summary" className="gap-1 sm:p-7">
           <SummaryRows
             rows={[
               { k: 'Sisa pinjaman', v: rupiah(m.outstandingPrincipal) },
@@ -77,14 +78,14 @@ export function AmortizationPage() {
               { k: 'Sisa pokok akhir', v: rupiah(s.totals.endingBalance) },
             ]}
           />
-          <div className="mt-3.5 flex flex-col gap-1 rounded-xl bg-muted px-4 py-3.5">
+          <div data-tour="amort-rate" className="mt-3.5 flex flex-col gap-1 rounded-xl bg-muted px-4 py-3.5">
             <span className="text-xs font-extrabold text-ink-3">Asumsi rate</span>
             <span className="text-sm font-bold">
               {s.assumptions.map((a) => `${percentBps(a.annualRateBps)} ${a.rateType}${a.estimated ? ' (estimasi)' : ''}`).join(' → ')}
             </span>
           </div>
         </Panel>
-        <Panel className="sm:p-7">
+        <Panel data-tour="amort-chart" className="sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-[17px] font-extrabold">Komposisi Pembayaran per Tahun</h2>
             <div className="flex gap-3.5 text-xs font-bold text-ink-3" aria-hidden>
@@ -139,7 +140,7 @@ export function AmortizationPage() {
               Mulai {dateShort(s.rows[floating.startMonth].dueDate)} memakai estimasi floating {percentBps(floating.annualRateBps)}.
             </Notice>
           )}
-          <Button asChild className="w-fit">
+          <Button asChild className="w-fit" data-tour="amort-full">
             <Link to="/my-kpr/amortization/jadwal">
               Lihat Jadwal Lengkap
               <ArrowRightIcon aria-hidden />

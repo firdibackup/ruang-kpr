@@ -24,12 +24,12 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   const products = page.getByRole('list', { name: 'Produk KPR' }).getByRole('listitem')
   await expect(products).toHaveCount(4)
   await expectNoSecondary(page)
-  await page.getByRole('button', { name: /KPR Primary/ }).click()
+  await page.getByRole('button', { name: /Mulai Pengajuan KPR/ }).click()
 
   // Product is already chosen on Home: step 1 is personal data, the draft is created on its first save.
   await expect(page).toHaveURL(/apply\/primary\/1/)
-  await expect(page.getByText('Step 1 dari 7')).toBeVisible()
-  await expect(page.getByText('0% selesai.')).toBeAttached()
+  await expect(page.getByText('Bagian 1 dari 3 · Tentang Kamu')).toBeVisible()
+  await expect(page.getByText('0% selesai.', { exact: true })).toBeAttached()
   await page.getByLabel('NIK').fill('3174012345678901')
   await page.getByLabel('Tempat Lahir').fill('Bekasi')
   await page.getByLabel('Tanggal Lahir').fill('1996-04-12')
@@ -40,8 +40,15 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
   await expect(page).toHaveURL(/apply\/primary\/2/)
-  await expect(page.getByText('Step 2 dari 7')).toBeVisible()
-  await page.getByLabel('Jenis Pekerjaan').selectOption('private_employee')
+  await expect(page.getByText('30% selesai.')).toBeAttached()
+  // "Lainnya" swaps in a free-text job; picking a listed job hides it again.
+  const job = page.getByLabel('Jenis Pekerjaan', { exact: true })
+  await job.selectOption('Lainnya')
+  await expect(page.getByLabel('Jenis Pekerjaan lainnya')).toBeFocused()
+  await page.getByLabel('Jenis Pekerjaan lainnya').fill('Guru Honorer')
+  await expect(job).toHaveValue('__other')
+  await job.selectOption('private_employee')
+  await expect(page.getByLabel('Jenis Pekerjaan lainnya')).toHaveCount(0)
   await page.getByLabel('Nama Perusahaan').fill('PT Nusantara Digital')
   await page.getByLabel('Jabatan').fill('Product Designer')
   await page.getByLabel('Lama Bekerja (tahun)').fill('4')
@@ -50,14 +57,21 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   for (const l of ['Cicilan Kendaraan', 'Kartu Kredit / Paylater', 'Pinjaman Lain']) await page.getByLabel(l).fill('0')
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
+  // Phase 1 closes with a milestone computed from the saved profile.
   await expect(page).toHaveURL(/apply\/primary\/3/)
+  await expect(page.getByRole('heading', { name: 'Tahap 1 selesai' })).toBeVisible()
+  await expect(page.getByText('Cicilan aman')).toBeVisible()
+  await expect(page.getByText('Plafon KPR hingga')).toBeVisible()
+  await expect(page.getByText('3 program bank terbuka untuk profilmu')).toBeVisible()
   // Going back to edit keeps the saved progress instead of dropping it.
   await page.getByRole('button', { name: 'Kembali', exact: true }).last().click()
   await expect(page).toHaveURL(/apply\/primary\/2/)
-  await expect(page.getByText('29% selesai.')).toBeAttached()
+  await expect(page.getByText('55% selesai.')).toBeAttached()
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
+  await page.getByRole('button', { name: /Lanjut ke Tahap 2/ }).click()
 
   await expect(page).toHaveURL(/apply\/primary\/3/)
+  await expect(page.getByText('Bagian 2 dari 3 · Rumah & Pinjaman')).toBeVisible()
   await page.getByRole('radio', { name: /Rumah baru dari developer/ }).click()
   await page.getByLabel('Nama Developer').fill('PT Griya Asri')
   await page.getByLabel('Jenis Properti').selectOption('landed_house')
@@ -73,6 +87,11 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   await page.getByRole('button', { name: 'Simpan & Lanjutkan' }).click()
 
   await expect(page).toHaveURL(/apply\/primary\/5/)
+  await expect(page.getByRole('heading', { name: 'Tahap 2 selesai' })).toBeVisible()
+  await expect(page.getByText('Program cocok')).toBeVisible()
+  await expect(page.getByText('80% selesai.')).toBeAttached()
+  await page.getByRole('button', { name: /Lanjut ke Tahap 3/ }).click()
+  await expect(page.getByRole('heading', { name: 'Dokumen pengajuan' })).toBeVisible()
   const inputs = page.locator('input[type=file]')
   for (let i = 0; i < 4; i++) {
     await inputs.nth(i).setInputFiles(pdf(`doc-${i}.pdf`))
@@ -97,7 +116,8 @@ test('primary: register → OTP → 7 steps → submit → tracker (resume at st
   await submit.click()
 
   await expect(page.getByRole('heading', { name: 'Pengajuan berhasil dikirim' })).toBeVisible()
-  await page.getByRole('link', { name: 'Pantau Pengajuan' }).click()
+  await page.getByRole('button', { name: 'Lihat Dashboard' }).click()
+  await page.getByRole('link', { name: 'Lihat detail', exact: true }).click()
   await expect(page).toHaveURL(/my-kpr\/application/)
   await expect(page.getByText('Status: Diajukan')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Batalkan Pengajuan' })).toBeVisible()

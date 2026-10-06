@@ -4,6 +4,7 @@ import { CAPACITY_RATIO_BPS, OLD_BANK_POLICY, STALE_AFTER_DAYS } from '@/data/ca
 import { addMonths, daysUntil, nextDueDate, parseIsoDate } from './dates'
 import {
   calculateAnnuityPayment,
+  calculateMaxPrincipal,
   calculateOutstanding,
   calculatePaymentCapacity,
   calculateTakeoverScenario,
@@ -114,6 +115,35 @@ export function comparePrimaryPrograms({ products, input, asOf, sort = 'total', 
     items: items.map((x) => ({ ...x, recommended: x === recommended })),
     excluded: evaluated.filter((x) => x.excluded.length).map((x) => ({ productId: x.productId, bank: x.bank, name: x.name, reasons: x.excluded })),
   }
+}
+
+// What the profile alone can borrow, before a property is picked (Primary wizard milestone 1).
+// Property type and LTV are unknown yet, so only income, occupation and age open a program.
+// Uses the fixed rate over the full tenor: the first payment `comparePrimaryPrograms` checks against capacity.
+export function primaryAffordability({ products, input, asOf, ratioBps = CAPACITY_RATIO_BPS }) {
+  const capacity = calculatePaymentCapacity({ monthlyIncome: input.monthlyIncome, existingDebt: input.existingDebt, ratioBps })
+  const age = input.birthDate ? ageOn(input.birthDate, asOf) : null
+  const open = products
+    .filter((p) => p.productTypes.includes('primary') && isAvailable(p, asOf))
+    .map((product) => {
+      const e = product.eligibility
+      const tenorMonths = age === null ? e.maximumTenorMonths : Math.min(e.maximumTenorMonths, (e.maximumAgeAtMaturity - age) * 12)
+      const ok = input.monthlyIncome >= e.minimumIncome && (!input.occupation || e.occupations.includes(input.occupation)) && (age === null || age >= e.minimumAge) && tenorMonths >= 12
+      return ok && { product, tenorMonths }
+    })
+    .filter(Boolean)
+  let best = null
+  if (capacity.remainingCapacity > 0) {
+    for (const { product, tenorMonths } of open) {
+      const fixedRateBps = product.ratePeriods.find((p) => p.type === 'fixed').rateBps
+      const principal = calculateMaxPrincipal({ payment: capacity.remainingCapacity, annualRateBps: fixedRateBps, termMonths: tenorMonths })
+      if (principal > (best?.principal ?? 0)) {
+        const maxLtvBps = product.eligibility.maximumLtvBps
+        best = { principal, priceMax: Math.floor((principal * 10_000) / maxLtvBps), tenorMonths, fixedRateBps, maxLtvBps }
+      }
+    }
+  }
+  return { capacity, openCount: open.length, best }
 }
 
 // ---------- Take Over + Top-up ----------
@@ -270,7 +300,6 @@ export function evaluateTakeoverProduct({ product, baseline, input, asOf, plafon
     reasons,
     purposeOk,
     paymentWithinCap: !input.maxPayment || sim.payment <= input.maxPayment,
-    fundsCoverCosts: topup || input.fundsForCosts == null ? null : input.fundsForCosts >= upfront,
     upfrontCosts: upfront,
     totalCost: sim.totalPayment + comparison.costs.totalEconomicCost,
   }

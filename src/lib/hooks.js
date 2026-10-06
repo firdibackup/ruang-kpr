@@ -44,7 +44,9 @@ export function useForm(initial, validate) {
     event?.preventDefault?.()
     setSubmitted(true)
     if (Object.keys(errors).length) {
-      setTimeout(() => document.querySelector('[aria-invalid="true"]')?.focus(), 0)
+      // The submitting form first, so a dialog's form never sends focus to a field behind the dialog.
+      const own = event?.currentTarget?.closest?.('form')
+      setTimeout(() => (own?.querySelector('[aria-invalid="true"]') ?? document.querySelector('[aria-invalid="true"]'))?.focus(), 0)
       return
     }
     await onValid(values)

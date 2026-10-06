@@ -58,7 +58,7 @@ export function AppShell() {
       </a>
       <aside className="sticky top-0 hidden h-dvh w-[264px] shrink-0 flex-col gap-[34px] border-r border-border bg-card px-[26px] py-7 lg:flex">
         <Brand />
-        <nav aria-label="Navigasi utama" className="flex flex-col gap-1.5">
+        <nav data-tour="nav" aria-label="Navigasi utama" className="flex flex-col gap-1.5">
           {NAV.map((n) => {
             const active = n.match(pathname)
             return (
@@ -97,7 +97,7 @@ export function AppShell() {
         </main>
       </div>
 
-      <nav aria-label="Navigasi utama" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <nav data-tour="nav" aria-label="Navigasi utama" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
         {NAV.map((n) => {
           const active = n.match(pathname)
           return (

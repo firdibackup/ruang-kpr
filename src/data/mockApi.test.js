@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { calculateMaxPrincipal } from '@/calculations/finance'
 import { selectHomeState } from '@/domains/home/selectHomeState'
+import { takeoverGaps } from '@/domains/optimize/validation'
 import { createMockApi, mockControls } from './mockApi'
-import { SCENARIOS, createSeed } from './seed'
+import { DEFAULT_REMINDERS, SCENARIOS, createSeed } from './seed'
 
 const api = createMockApi({ latencyMs: 0 })
 const file = (name, size = 200_000, type = 'image/jpeg') => ({ name, size, type })
@@ -23,6 +25,25 @@ describe('auth', () => {
     expect(snap.user.name).toBe('Firdi Audi')
     expect(snap.applications).toHaveLength(0) // registration never creates an application
   })
+
+  it('deleteAccount wipes everything; registering again starts empty', async () => {
+    mockControls.reset('mortgage_active_normal')
+    await api.auth.deleteAccount()
+    expect((await api.auth.getSession()).status).toBe('guest')
+    await expectCode(api.dashboard.getSnapshot(), 'AUTH_REQUIRED')
+    await api.auth.register({ name: 'Firdi Audi', contact: '0812 3456 7890', acceptTerms: true, acceptPrivacy: true })
+    await api.auth.verifyOtp({ otp: '148260' })
+    const snap = await api.dashboard.getSnapshot()
+    expect(snap.profile.nik).toBeUndefined()
+    expect(snap.mortgages).toHaveLength(0)
+    expect(snap.applications).toHaveLength(0)
+  })
+
+  it('deleteAccount is blocked while an application is at the bank', async () => {
+    mockControls.reset('application_in_process')
+    await expectCode(api.auth.deleteAccount(), 'INVALID_STATE_TRANSITION')
+    expect((await api.dashboard.getSnapshot()).user).toBeTruthy()
+  })
 })
 
 describe('primary application', () => {
@@ -39,6 +60,7 @@ describe('primary application', () => {
         loan: { downPayment: 100_000_000, amount: 400_000_000, tenorMonths: 240 },
       },
     })
+    expect(await api.bankProducts.affordability({ applicationId: app.id })).toMatchObject({ openCount: 3, capacity: { remainingCapacity: 3_750_000 } })
     await expectCode(api.applications.submit(app.id, { consents: { dataAccuracy: true, sendToBank: true } }), 'DOCUMENTS_INCOMPLETE')
     for (const t of ['ktp', 'npwp', 'income_proof', 'property_document']) await api.applications.uploadDocument(app.id, { documentType: t, file: file(`${t}.jpg`) })
     // File rules are temporarily off (ENFORCE_FILE_RULES): any type/size is accepted.
@@ -93,27 +115,73 @@ describe('primary application', () => {
 })
 
 describe('monitoring', () => {
-  it('changed payment requires official outstanding; activation creates no application', async () => {
+  const step1 = { bankName: 'Bank ABC', scheme: 'conventional', originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22 }
+  const fixedRate = { currentRateType: 'fixed', fixedUntil: '2026-12-22', currentRateBps: 550, remainingTenorMonths: 183, estimatedFloatingRateBps: 900, outstandingPrincipal: null, outstandingEstimated: null }
+
+  it('step 1 KPR data is all activation needs; sisa pokok is estimated when not known', async () => {
     mockControls.reset('fresh')
     const m = await api.mortgages.createSetup()
-    await expectCode(api.mortgages.saveSetupStep(m.id, { step: 2, values: { paymentEverChanged: true, outstandingPrincipal: null } }), 'OFFICIAL_OUTSTANDING_REQUIRED')
-    await expectCode(api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: true }), 'OFFICIAL_OUTSTANDING_REQUIRED')
-    const est = await api.mortgages.estimate({ originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22, paymentEverChanged: false })
-    expect(est).toMatchObject({ effectiveRateBps: 550, paidMonths: 57, remainingMonths: 183, estimated: true })
-    expect(Math.abs(est.outstanding - 510_515_794)).toBeLessThan(5)
-    await api.mortgages.saveSetupStep(m.id, {
-      step: 5,
-      values: {
-        bankName: 'Bank ABC', originalPrincipal: 600_000_000, currentPayment: 4_127_324, originalTenorMonths: 240, startDate: '2021-12-22', dueDay: 22,
-        outstandingPrincipal: est.outstanding, remainingTenorMonths: 183, paymentEverChanged: false, currentRateBps: 550, currentRateType: 'fixed', fixedUntil: '2026-12-22', estimatedFloatingRateBps: 900,
-        finance: { monthlyIncome: 15_000_000, vehicleDebt: 0, cardDebt: 0, otherDebt: 0 },
-      },
-    })
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { ...step1, ...fixedRate } })
+    expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 550, termMonths: 183 }))
+    expect(saved.outstandingEstimated).toBe(true)
+    expect(saved.setupStep).toBe(2) // straight to Reminder
+    await api.mortgages.saveSetupStep(m.id, { step: 2, values: { reminders: structuredClone(DEFAULT_REMINDERS) } })
     const r = await api.mortgages.activate(m.id, { confirmDataCorrect: true })
     expect(r.applicationCreated).toBe(false)
     const snap = await api.dashboard.getSnapshot()
     expect(snap.applications).toHaveLength(0)
     expect(selectHomeState(snap, snap.clock).state).toBe('mortgage_active_warning')
+  })
+
+  it('reminder-only data no longer activates: amortization data is required', async () => {
+    mockControls.reset('fresh')
+    const m = await api.mortgages.createSetup()
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: { bankName: 'Bank ABC', currentPayment: 4_127_324, dueDay: 22, currentRateType: 'floating' } })
+    await expect(api.mortgages.activate(m.id, { confirmDataCorrect: true })).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: { missing: expect.arrayContaining(['originalPrincipal', 'currentRateBps', 'outstandingPrincipal']) } })
+  })
+
+  it('official sisa pinjaman wins until cleared; floating clears the fixed-only fields', async () => {
+    mockControls.reset('fresh')
+    const m = await api.mortgages.createSetup()
+    await api.mortgages.saveSetupStep(m.id, { step: 1, values: { ...step1, ...fixedRate, outstandingPrincipal: 500_000_000, outstandingEstimated: false } })
+    let saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { currentRateBps: 600 } })
+    expect(saved).toMatchObject({ outstandingPrincipal: 500_000_000, outstandingEstimated: false })
+    saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { outstandingPrincipal: null, outstandingEstimated: null } })
+    expect(saved.outstandingPrincipal).toBe(calculateMaxPrincipal({ payment: 4_127_324, annualRateBps: 600, termMonths: 183 }))
+    expect(saved.outstandingEstimated).toBe(true)
+    saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { currentRateType: 'floating' } })
+    expect(saved).toMatchObject({ fixedUntil: null, estimatedFloatingRateBps: null })
+  })
+
+  it('Data properti filled after activation is saved on the KPR', async () => {
+    mockControls.reset('mortgage_active_normal')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { property: { type: 'landed_house', address: 'Griya Asri Blok C2' } } })
+    expect(saved.property).toMatchObject({ type: 'landed_house', address: 'Griya Asri Blok C2' })
+    expect(saved.status).toBe('active')
+  })
+
+  it('"Tetap di bank" hides the fixed-rate warning for the current milestone only', async () => {
+    mockControls.reset('mortgage_active_h90')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    expect((await api.mortgages.dismissRateWarning(m.id)).rateWarningDismissedMilestone).toBe(90)
+    mockControls.reset('mortgage_active_normal')
+    const [normal] = (await api.dashboard.getSnapshot()).mortgages
+    await expectCode(api.mortgages.dismissRateWarning(normal.id), 'INVALID_STATE_TRANSITION')
+  })
+
+  it('saving unrelated fields keeps an existing sisa pinjaman stable', async () => {
+    mockControls.reset('mortgage_active_normal')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    const saved = await api.mortgages.saveSetupStep(m.id, { step: 1, values: { bankName: m.bankName, currentPayment: m.currentPayment, dueDay: m.dueDay } })
+    expect(saved.outstandingPrincipal).toBe(m.outstandingPrincipal)
+  })
+
+  it('profile finance edits reach the active mortgage (KPR Health reads that copy)', async () => {
+    mockControls.reset('mortgage_active_normal')
+    await api.profile.update({ finance: { monthlyIncome: 20_000_000, vehicleDebt: 1_000_000 } })
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    expect(m.finance).toMatchObject({ monthlyIncome: 20_000_000, vehicleDebt: 1_000_000 })
   })
 
   it('manual payment is user-recorded and never bank-confirmed; duplicates rejected', async () => {
@@ -122,6 +190,38 @@ describe('monitoring', () => {
     const p = await api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28' })
     expect(p).toMatchObject({ source: 'manual_user_recorded', bankConfirmed: false })
     await expectCode(api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28' }), 'DUPLICATE_PAYMENT_RECORD')
+  })
+
+  it('payment proof keeps metadata only and rejects unsupported files', async () => {
+    mockControls.reset('mortgage_active_normal')
+    const [m] = (await api.dashboard.getSnapshot()).mortgages
+    await expectCode(api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28', proof: { name: 'bukti.docx', size: 1000, type: 'application/msword' } }), 'FILE_TYPE_UNSUPPORTED')
+    await expectCode(api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28', proof: { name: 'bukti.pdf', size: 6 * 1024 * 1024, type: 'application/pdf' } }), 'FILE_TOO_LARGE')
+    const p = await api.mortgages.markPaid(m.id, { dueDate: '2026-10-22', amount: m.currentPayment, paidAt: '2026-09-28', proof: { name: 'bukti.pdf', size: 120_000, type: 'application/pdf' } })
+    expect(p.proof).toEqual({ fileName: 'bukti.pdf', sizeBytes: 120_000, contentType: 'application/pdf' })
+  })
+})
+
+describe('dashboard layout', () => {
+  it('is null until customised (the board picks the default for the data); saves a validated layout; null restores it', async () => {
+    mockControls.reset('mortgage_active_normal')
+    expect((await api.dashboard.getSnapshot()).dashboardLayout).toBeNull()
+    await expectCode(api.dashboard.saveLayout('rusak'), 'VALIDATION_FAILED')
+    const saved = await api.dashboard.saveLayout([{ i: 'outstanding', x: 0, y: 3, w: 99, h: 4 }, { i: 'chart', x: 0, y: 0, w: 4, h: 4 }])
+    expect(saved).toEqual([{ i: 'outstanding', x: 0, y: 0, w: 12, h: 4 }])
+    expect((await api.dashboard.getSnapshot()).dashboardLayout).toEqual(saved)
+    expect(await api.dashboard.saveLayout(null)).toBeNull()
+  })
+})
+
+describe('page tours', () => {
+  it('none seen after a reset; marks known tours once; rejects unknown ids', async () => {
+    mockControls.reset('fresh')
+    expect((await api.dashboard.getSnapshot()).toursSeen).toEqual([])
+    await api.dashboard.markTourSeen('home-fresh')
+    await api.dashboard.markTourSeen('home-fresh')
+    await expectCode(api.dashboard.markTourSeen('toString'), 'VALIDATION_FAILED')
+    expect((await api.dashboard.getSnapshot()).toursSeen).toEqual(['home-fresh'])
   })
 })
 
@@ -136,6 +236,51 @@ describe('take over simulation', () => {
     const app = await api.simulations.apply({ bankProductId: sim.items[0].productId, tenorMonths: 180 })
     expect(app).toMatchObject({ productType: 'takeover', status: 'draft', currentStep: 6, mortgageId: m.id })
     expect((await api.dashboard.getSnapshot()).applications).toHaveLength(1)
+  })
+
+  it('a draft from a monitored KPR submits only once its forms pass; non-pricing data keeps the program', async () => {
+    const applyFirst = async () => {
+      mockControls.reset('mortgage_active_floating')
+      const [m] = (await api.dashboard.getSnapshot()).mortgages
+      const sim = await api.simulations.run({ source: { type: 'mortgage', id: m.id }, input: { mode: 'takeover', goal: 'lower_payment', tenorMonths: 180 } })
+      return api.simulations.apply({ bankProductId: sim.items[0].productId, tenorMonths: 180 })
+    }
+    let app = await applyFirst()
+    for (const d of app.requiredDocuments.filter((x) => x.required)) await api.applications.uploadDocument(app.id, { documentType: d.type, file: file(`${d.type}.jpg`) })
+    const consents = { dataAccuracy: true, sendToBank: true }
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { companyName: '' } } })
+    await expectCode(api.applications.submit(app.id, { consents }), 'VALIDATION_FAILED') // Pekerjaan no longer passes its form
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { companyName: 'PT Lain', jobTitle: 'Manager' } } })
+    expect(app.selection).not.toBeNull()
+    expect((await api.applications.submit(app.id, { consents })).status).toBe('submitted')
+
+    app = await applyFirst()
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { monthlyIncome: app.data.employment.monthlyIncome + 1_000_000 } } })
+    expect(app.selection).toBeNull() // income prices the program
+  })
+
+  it('a cancelled Take Over keeps what was typed, so the next draft starts filled in', async () => {
+    mockControls.reset('fresh')
+    let app = await api.applications.create({ productType: 'takeover', mode: 'takeover' })
+    const oldLoan = { bankName: 'Bank ABC', originalPrincipal: 500_000_000, currentPayment: 5_000_000, rateBps: 1050, rateType: 'floating', outstanding: 421_500_000, remainingMonths: 181, source: 'official' }
+    const property = { propertyType: 'landed_house', city: 'Kota Bekasi', estimatedValue: 850_000_000 }
+    const finance = { vehicleDebt: 1_000_000, cardDebt: 0, otherDebt: 0 }
+    app = await api.applications.saveStep(app.id, { step: 1, values: { employment: { monthlyIncome: 15_000_000 } } })
+    app = await api.applications.saveStep(app.id, { step: 2, values: { oldLoan, property, finance } })
+    await api.applications.cancel(app.id)
+
+    const next = await api.applications.create({ productType: 'takeover', mode: 'takeover' })
+    expect(next.id).not.toBe(app.id)
+    expect(next.data).toMatchObject({ oldLoan, property, finance, employment: { monthlyIncome: 15_000_000 } }) // gaji via the profile
+    expect(next).toMatchObject({ currentStep: 1, documents: {} })
+  })
+
+  it('a draft created from a monitored KPR is prefilled and opens on Tujuan with only the missing forms left', async () => {
+    mockControls.reset('mortgage_active_floating')
+    const { mortgages: [m], clock } = await api.dashboard.getSnapshot()
+    const app = await api.applications.create({ productType: 'takeover', mode: 'takeover', mortgageId: m.id })
+    expect(app).toMatchObject({ source: 'mortgage', mortgageId: m.id, currentStep: 5, selection: null, data: { oldLoan: { bankName: m.bankName, outstanding: m.outstandingPrincipal } } })
+    expect(takeoverGaps(app.data, { today: clock, mode: 'takeover' })).toEqual([]) // nothing left to ask
   })
 })
 

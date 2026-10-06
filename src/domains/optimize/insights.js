@@ -3,10 +3,14 @@
 import { CalculationError, calculateDti, calculatePaymentCapacity, calculatePropertyMetrics, calculateTopupScenario } from '@/calculations/finance'
 import { takeoverBaseline } from '@/calculations/programs'
 import { healthScore, rateMode } from '@/domains/mortgages/derive'
+import { rupiahShort } from '@/lib/format'
+
+// Same bands as the program list: 35% is the usual bank guideline, some banks accept up to 45%.
+export const dtiTone = (r) => (r == null ? undefined : r <= 0.35 ? 'ok' : r <= 0.45 ? 'warn' : 'bad')
 
 const incomeOf = (e = {}) => (e.monthlyIncome ?? 0) + (e.jointIncome ? e.partnerIncome ?? 0 : 0)
 const debtOf = (f = {}) => (f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0)
-// Estimated old loans have no known rate type: report the rate as unknown instead of assuming fixed.
+// Drafts saved before Jenis bunga was asked have no rate type: report it as unknown instead of assuming fixed.
 const rateOf = (o, clock) => (o.rateType ? rateMode({ currentRateType: o.rateType, fixedUntil: o.fixedUntil }, clock) : { mode: null, daysUntilFixedEnd: null })
 
 function calc(fn) {
@@ -45,7 +49,9 @@ export function goalConditions({ employment, oldLoan: o = {}, finance: f = {}, p
   return {
     outstanding: o.outstanding ?? null,
     exitCosts: baseline?.exit.total ?? null,
-    fundsForCosts: f.fundsForCosts ?? null,
+    // What staying costs (phase 1 milestone): interest left and payoff month at the recorded payment.
+    totalInterest: baseline?.totalInterest ?? null,
+    payoffDate: baseline?.payoffDate ?? null,
     dtiRatio: income > 0 && o.currentPayment > 0 ? (o.currentPayment + otherDebt) / income : null,
     rate: rateOf(o, clock),
     maxLoanByCollateral: topup?.maxLoanByCollateral ?? null,
@@ -54,4 +60,16 @@ export function goalConditions({ employment, oldLoan: o = {}, finance: f = {}, p
     safePayment: capacity?.remainingCapacity ?? null,
     paymentRoom: capacity && o.currentPayment > 0 ? capacity.remainingCapacity - o.currentPayment : null,
   }
+}
+
+// Phase 2 milestone teaser on Baseline: one line from the simulation already loaded there.
+export function simulationTeaser({ items, input }) {
+  const n = items.length
+  if (!n) return 'Belum ada program yang cocok'
+  if (input.mode === 'topup') {
+    const funded = items.filter((x) => x.topup && x.topup.fundingGap <= 0).length
+    return funded ? `${n} program cocok · ${funded} memenuhi kebutuhan dana ${rupiahShort(input.requestedTopup)}` : `${n} program cocok · belum ada yang memenuhi kebutuhan dana`
+  }
+  const cut = Math.max(0, ...items.map((x) => x.monthlyDiff))
+  return cut > 0 ? `${n} program cocok · cicilan bisa turun hingga ${rupiahShort(cut)}/bln` : `${n} program cocok · belum ada yang menurunkan cicilan`
 }

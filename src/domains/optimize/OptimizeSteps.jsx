@@ -4,13 +4,13 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
 import {
   BriefcaseIcon,
   CalculatorIcon,
   CreditCardIcon,
-  GaugeIcon,
   HandCoinsIcon,
   HeartPulseIcon,
   HouseIcon,
@@ -19,6 +19,7 @@ import {
   LandmarkIcon,
   ListOrderedIcon,
   LockIcon,
+  PercentIcon,
   TargetIcon,
   UserRoundIcon,
   WalletIcon,
@@ -43,6 +44,7 @@ import {
   percentRatio,
   rupiah,
   tenorLabel,
+  toBps,
   toInt,
   toMoney,
 } from "@/lib/format";
@@ -56,7 +58,7 @@ import {
   MoneyField,
   NumberField,
   RadioCards,
-  ReadonlyField,
+  RateField,
   SelectField,
   TextAreaField,
   TextField,
@@ -81,45 +83,88 @@ import {
 import {
   toEmployment,
   toPersonal,
+  validateEmployment,
   validatePersonal,
 } from "@/domains/applications/validation";
+import { takeoverScreenOf } from "@/domains/applications/meta";
 import {
   HEALTH_SENTENCE,
   HealthRing,
-} from "@/domains/home/MonitoringDashboard";
-import { applicationHealth, goalConditions } from "./insights";
+} from "@/domains/home/dashboardWidgets";
+import { applicationHealth, dtiTone, goalConditions } from "./insights";
 import { Aside, OptimizeHeader, modeName, useOptimize } from "./shared";
+import { TakeoverMilestone } from "./TakeoverMilestone";
 import {
-  validateCapacity,
-  validateEmploymentBasic,
+  oldLoanFormValues,
+  outstandingEstimate,
+  takeoverGaps,
   validateGoal,
-  validateOldLoanBase,
+  validateOldLoan,
   validateTakeoverProperty,
 } from "./validation";
+import {
+  RATE_AUTO_HINT,
+  impliedRate,
+  withImpliedRate,
+} from "@/domains/mortgages/validation";
 
 const TENOR_OPTIONS = [5, 10, 15, 20, 25].map((y) => ({
   value: String(y * 12),
   label: `${y} tahun`,
 }));
-const YES_NO_CHANGED = [
-  { value: "no", label: "Tidak" },
-  { value: "yes", label: "Ya" },
+const RATE_TYPES = [
+  { value: "fixed", label: "Fixed" },
+  { value: "floating", label: "Floating" },
 ];
+const KNOWS = [
+  { value: "yes", label: "Ya" },
+  { value: "no", label: "Tidak" },
+];
+// Screen names under the page title; the "Bagian X dari 3" label lives in the progress card.
+const SUBTITLES = {
+  1: "Data pribadi",
+  2: "KPR lama",
+  4: "Properti",
+  5: "Tujuan",
+  6: "Dokumen",
+  7: "Review",
+};
 
 export function OptimizeStepPage({ employment = false }) {
   const { step } = useParams();
   const n = employment ? 1 : Number(step);
   const location = useLocation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const opt = useOptimize();
-  const { snap, app, error, reload, setApp } = opt;
+  const { snap, error, reload, setApp } = opt;
   if (!(n >= 1 && n <= 7)) return <Navigate to="/optimize/intro" replace />;
   if (!snap) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />;
+  // Nothing is stored until Data pribadi is saved: a new Take Over fills an unsaved draft (no id) that useStepSave creates.
+  const profile = snap.profile ?? {};
+  const app =
+    opt.app ??
+    (!opt.otherApp && n === 1 && !employment
+      ? {
+          status: "draft",
+          currentStep: 1,
+          optimizationMode: params.get("mode") === "topup" ? "topup" : "takeover",
+          selection: null,
+          data: { personal: { ...profile, fullName: profile.fullName ?? snap.user?.name } },
+        }
+      : null);
   if (!app) return <Navigate to="/optimize/intro" replace />;
   if (app.status !== "draft")
     return <Navigate to="/my-kpr/application" replace />;
   if (n >= 6 && !app.selection)
     return <Navigate to="/optimize/baseline" replace />;
+  // A draft from a monitored KPR skips the data steps: every way into Tujuan/Dokumen/Review asks the missing ones first.
+  const gaps = takeoverGaps(app.data, {
+    today: snap.clock,
+    mode: app.optimizationMode,
+  });
+  if (n >= 5 && gaps.length)
+    return <Navigate to={gaps[0]} state={{ from: "gaps" }} replace />;
   if (n > app.currentStep)
     return (
       <Navigate
@@ -140,36 +185,49 @@ export function OptimizeStepPage({ employment = false }) {
     return <Navigate to="/optimize/1" replace />;
 
   const fromReview = location.state?.from === "review";
-  const next = (to) => navigate(fromReview && n !== 2 ? "/optimize/7" : to);
+  const fromGaps = location.state?.from === "gaps";
+  // Step 3 has no form: it is the phase 1 summary of the old loan.
+  const milestone = n === 3;
+  // `gaps` is from before this save, so it still lists the page just saved. Done: Dokumen once a bank is picked, else Tujuan.
+  const gap = gaps.find((p) => p !== location.pathname);
+  const next = (to, opts) =>
+    fromGaps
+      ? navigate(
+          gap ?? (app.selection ? "/optimize/6" : "/optimize/5"),
+          gap ? { state: { from: "gaps" } } : {},
+        )
+      : navigate(fromReview ? "/optimize/7" : to, opts);
   const props = { app, clock: snap.clock, setApp, next, navigate, fromReview };
   const PN = modeName(app.optimizationMode);
   const back = {
     1: employment ? "/optimize/1" : "/optimize/intro",
     2: "/optimize/1/pekerjaan",
-    3:
-      app.data.oldLoan?.source === "estimate"
-        ? "/optimize/2/estimasi"
-        : "/optimize/2/resmi",
+    3: "/optimize/2",
     4: "/optimize/3",
     5: "/optimize/4",
     6: "/optimize/programs",
     7: "/optimize/6",
   }[n];
+  // Progress screens (takeoverProgress): 1 Data pribadi, 2 Pekerjaan, step n → n + 1 up to Tujuan, then Dokumen 8, Review 9.
+  const screen = n === 1 ? (employment ? 2 : 1) : n <= 5 ? n + 1 : n + 2;
   const subtitle =
-    n === 1
-      ? `Step 1/7 · ${employment ? "Pekerjaan & penghasilan" : "Data pribadi"}`
-      : `Step ${n}/7`;
+    n === 1 && employment ? "Pekerjaan & penghasilan" : SUBTITLES[n];
 
   return (
     <>
       <OptimizeHeader
-        n={n}
-        // Personal data is already saved here (guarded above): count it as half of step 1.
-        reached={employment ? Math.max(app.currentStep, 1.5) : app.currentStep}
-        title={`Pengajuan ${PN}`}
-        subtitle={subtitle}
+        screen={screen}
+        reached={takeoverScreenOf(app)}
+        title={milestone ? "Tahap 1 selesai" : `Pengajuan ${PN}`}
+        subtitle={milestone ? `${PN} · gambaran KPR lama kamu` : subtitle}
         back={fromReview ? "/optimize/7" : back}
       />
+      {fromGaps && (
+        <Notice tone="info" title="Lengkapi data pengajuan">
+          Data ini belum ada di KPR yang kamu pantau dan diperlukan sebelum{" "}
+          {app.selection ? "unggah dokumen" : "melihat pilihan bank"}.
+        </Notice>
+      )}
       {n === 1 &&
         (employment ? (
           <EmploymentStep {...props} />
@@ -177,7 +235,21 @@ export function OptimizeStepPage({ employment = false }) {
           <PersonalStep {...props} />
         ))}
       {n === 2 && <OldLoanStep {...props} />}
-      {n === 3 && <CapacityStep {...props} />}
+      {milestone && (
+        <TakeoverMilestone
+          app={app}
+          clock={snap.clock}
+          onBack={() => navigate(back)}
+          // Leaving the summary is what opens Properti; drafts saved here before it lost its form need it too.
+          onNext={async () => {
+            if (app.currentStep < 4)
+              setApp(
+                await api.applications.saveStep(app.id, { step: 3, values: {} }),
+              );
+            navigate("/optimize/4");
+          }}
+        />
+      )}
       {n === 4 && <PropertyStep {...props} />}
       {n === 5 && <GoalStep {...props} />}
       {n === 6 && <TakeoverDocsStep {...props} />}
@@ -246,7 +318,10 @@ function useStepSave(app, step, setApp) {
     setSaving(true);
     setError("");
     try {
-      const saved = await api.applications.saveStep(app.id, { step, values });
+      const id =
+        app.id ??
+        (await api.applications.create({ productType: "takeover", mode: app.optimizationMode })).id;
+      const saved = await api.applications.saveStep(id, { step, values });
       setApp(saved);
       toast("Tersimpan.");
       return saved;
@@ -384,6 +459,8 @@ function PersonalStep({ app, clock, setApp, next, fromReview }) {
 // ---------- Step 1b ----------
 function EmploymentStep({ app, setApp, next, fromReview }) {
   const e = app.data.employment ?? {};
+  // Debts live in `finance` for Take Over; a new draft's employment carries the profile's as a starting point.
+  const f = app.data.finance ?? {};
   const form = useForm(
     {
       occupation: e.occupation ?? "",
@@ -394,19 +471,20 @@ function EmploymentStep({ app, setApp, next, fromReview }) {
       monthlyIncome: moneyInput(e.monthlyIncome),
       jointIncome: e.jointIncome ?? false,
       partnerIncome: moneyInput(e.partnerIncome),
+      vehicleDebt: moneyInput(f.vehicleDebt ?? e.vehicleDebt),
+      cardDebt: moneyInput(f.cardDebt ?? e.cardDebt),
+      otherDebt: moneyInput(f.otherDebt ?? e.otherDebt),
     },
-    validateEmploymentBasic,
+    validateEmployment,
   );
   const { saving, error, save } = useStepSave(app, 1, setApp);
   const v = form.values;
   const onSubmit = form.submit(async (x) => {
-    const {
-      vehicleDebt: _a,
-      cardDebt: _b,
-      otherDebt: _c,
-      ...employment
-    } = toEmployment({ ...x, vehicleDebt: "0", cardDebt: "0", otherDebt: "0" });
-    if (await save({ employment })) {
+    const { vehicleDebt, cardDebt, otherDebt, ...employment } =
+      toEmployment(x);
+    if (
+      await save({ employment, finance: { vehicleDebt, cardDebt, otherDebt } })
+    ) {
       form.markClean();
       next("/optimize/2");
     }
@@ -420,6 +498,9 @@ function EmploymentStep({ app, setApp, next, fromReview }) {
       workYears: "4",
       workMonths: "6",
       monthlyIncome: "15000000",
+      vehicleDebt: "1000000",
+      cardDebt: "500000",
+      otherDebt: "0",
     });
   return (
     <FormLayout
@@ -439,6 +520,7 @@ function EmploymentStep({ app, setApp, next, fromReview }) {
           <SelectField
             label="Jenis pekerjaan"
             options={OCCUPATIONS}
+            other="Tulis jenis pekerjaan"
             span
             {...form.bind("occupation")}
           />
@@ -486,6 +568,29 @@ function EmploymentStep({ app, setApp, next, fromReview }) {
           )}
         </FormGrid>
       </Group>
+      <Group
+        icon={CreditCardIcon}
+        title="Kewajiban lain per bulan"
+        desc="Isi 0 jika tidak ada."
+      >
+        <FormGrid>
+          <MoneyField
+            label="Cicilan kendaraan"
+            placeholder="0"
+            {...form.bind("vehicleDebt")}
+          />
+          <MoneyField
+            label="Kartu kredit / paylater"
+            placeholder="0"
+            {...form.bind("cardDebt")}
+          />
+          <MoneyField
+            label="Pinjaman lain"
+            placeholder="0"
+            {...form.bind("otherDebt")}
+          />
+        </FormGrid>
+      </Group>
       {error && (
         <Notice tone="bad" role="alert">
           {error}
@@ -495,31 +600,32 @@ function EmploymentStep({ app, setApp, next, fromReview }) {
   );
 }
 
-// ---------- Step 2 (base) ----------
-function OldLoanStep({ app, clock, setApp, navigate }) {
-  const o = app.data.oldLoan ?? {};
+// ---------- Step 2 ----------
+function OldLoanStep({ app, clock, setApp, next }) {
   const validate = useCallback(
-    (v) => validateOldLoanBase(v, { today: clock }),
+    (v) => validateOldLoan(v, { today: clock }),
     [clock],
   );
-  const known = BANKS.some((b) => b.value === o.bankName);
-  const form = useForm(
-    {
-      bankName: !o.bankName ? "" : known ? o.bankName : "Bank lainnya",
-      productName: o.productName ?? "",
-      originalPrincipal: moneyInput(o.originalPrincipal),
-      currentPayment: moneyInput(o.currentPayment),
-      originalTenorMonths: intInput(o.originalTenorMonths),
-      startDate: o.startDate ?? "",
-      dueDay: intInput(o.dueDay),
-      paymentEverChanged:
-        o.paymentEverChanged == null ? "" : o.paymentEverChanged ? "yes" : "no",
-    },
-    validate,
-  );
-  // Saved as sub-step 1 so the draft stays on step 2 until official/estimated figures are confirmed.
-  const { saving, error, save } = useStepSave(app, 1, setApp);
+  const form = useForm(oldLoanFormValues(app.data.oldLoan), validate);
+  const { saving, error, save } = useStepSave(app, 2, setApp);
+  const v = form.values;
+  const fixed = v.rateType === "fixed";
+  // Pinjaman, cicilan, tenor and jenis bunga keep an auto-filled bunga in step; it stays editable.
+  const bindRateSource = (key) => ({
+    ...form.bind(key),
+    onChange: (x) =>
+      form.setValues((p) =>
+        withImpliedRate(p, { ...p, [key]: x }, "rate", "rateType"),
+      ),
+  });
+  const rateIsAuto = v.rate !== "" && v.rate === impliedRate(v, v.rateType);
+  const estimate =
+    v.knowsOutstanding === "no" ? outstandingEstimate(v, clock) : null;
   const onSubmit = form.submit(async (x) => {
+    const official = x.knowsOutstanding === "yes";
+    // Validation guarantees the estimate exists when sisa pokok is not known.
+    const est = official ? null : outstandingEstimate(x, clock);
+    const isFixed = x.rateType === "fixed";
     const saved = await save({
       oldLoan: {
         bankName: x.bankName,
@@ -529,16 +635,19 @@ function OldLoanStep({ app, clock, setApp, navigate }) {
         originalTenorMonths: toInt(x.originalTenorMonths),
         startDate: x.startDate,
         dueDay: toInt(x.dueDay),
-        paymentEverChanged: x.paymentEverChanged === "yes",
+        rateBps: toBps(x.rate),
+        rateType: x.rateType,
+        fixedUntil: isFixed ? x.fixedUntil : null,
+        floatingRateBps: isFixed ? toBps(x.floatingRate) : null,
+        outstanding: official ? toMoney(x.outstanding) : est.outstanding,
+        remainingMonths: official ? toInt(x.remainingMonths) : est.remaining,
+        penaltyBps: String(x.penalty).trim() ? toBps(x.penalty) : null,
+        source: official ? "official" : "estimate",
       },
     });
     if (saved) {
       form.markClean();
-      navigate(
-        x.paymentEverChanged === "yes"
-          ? "/optimize/2/resmi"
-          : "/optimize/2/estimasi",
-      );
+      next("/optimize/3");
     }
   });
   const demo = () =>
@@ -550,7 +659,14 @@ function OldLoanStep({ app, clock, setApp, navigate }) {
       originalTenorMonths: "240",
       startDate: "2021-08-12",
       dueDay: "12",
-      paymentEverChanged: "yes",
+      rate: "10,50",
+      rateType: "floating",
+      fixedUntil: "",
+      floatingRate: "",
+      knowsOutstanding: "yes",
+      outstanding: "421500000",
+      remainingMonths: "181",
+      penalty: "",
     });
   return (
     <FormLayout
@@ -562,7 +678,7 @@ function OldLoanStep({ app, clock, setApp, navigate }) {
         <Aside
           icon={InfoIcon}
           title="Kenapa kami tanya ini?"
-          note="Kondisi KPR lama jadi pembanding sebelum melihat bank baru. Jika cicilan pernah berubah, kami minta sisa pokok resmi karena perhitungan satu bunga tidak lagi akurat."
+          note="Kondisi KPR lama jadi pembanding sebelum melihat bank baru. Bunga dan tanggal fixed berakhir menentukan cicilan kalau kamu tetap di bank lama."
         />
       }
     >
@@ -590,17 +706,13 @@ function OldLoanStep({ app, clock, setApp, navigate }) {
           />
           <MoneyField
             label="Pinjaman KPR awal"
-            {...form.bind("originalPrincipal")}
-          />
-          <MoneyField
-            label="Cicilan bulanan saat ini"
-            {...form.bind("currentPayment")}
+            {...bindRateSource("originalPrincipal")}
           />
           <NumberField
             label="Tenor awal"
             suffix="bulan"
             placeholder="240"
-            {...form.bind("originalTenorMonths")}
+            {...bindRateSource("originalTenorMonths")}
           />
           <DateField
             label="Tanggal akad"
@@ -612,13 +724,97 @@ function OldLoanStep({ app, clock, setApp, navigate }) {
             placeholder="12"
             {...form.bind("dueDay")}
           />
+        </FormGrid>
+      </Group>
+      <Group
+        icon={PercentIcon}
+        title="Cicilan & bunga"
+        desc="Lihat di surat akad atau aplikasi bank."
+      >
+        <FormGrid>
+          <MoneyField
+            label="Cicilan bulanan saat ini"
+            {...bindRateSource("currentPayment")}
+          />
+          <RateField
+            label="Bunga saat ini"
+            hint={rateIsAuto ? RATE_AUTO_HINT : ""}
+            {...form.bind("rate")}
+          />
           <RadioCards
-            label="Apakah cicilan pernah naik atau berubah?"
-            hint="Cicilan biasanya berubah saat masa fixed selesai dan bunga menjadi floating."
-            options={YES_NO_CHANGED}
+            label="Jenis bunga"
+            options={RATE_TYPES}
             variant="pill"
             span
-            {...form.bind("paymentEverChanged")}
+            {...bindRateSource("rateType")}
+          />
+          {fixed && (
+            <>
+              <DateField
+                label="Fixed berakhir"
+                hint="Kalau hanya tahu bulannya, pilih tanggal 1."
+                {...form.bind("fixedUntil")}
+              />
+              <RateField
+                label="Estimasi floating setelahnya"
+                optional
+                placeholder="10,50"
+                hint="Belum tahu? Kosongkan, tapi cicilan setelah fixed belum ikut dihitung."
+                {...form.bind("floatingRate")}
+              />
+            </>
+          )}
+        </FormGrid>
+      </Group>
+      <Group icon={WalletIcon} title="Sisa pinjaman">
+        <FormGrid>
+          <RadioCards
+            label="Kamu tahu sisa pokok terbaru dari bank?"
+            hint="Lihat di aplikasi bank, surat keterangan sisa pinjaman, atau rekening koran."
+            options={KNOWS}
+            variant="pill"
+            span
+            {...form.bind("knowsOutstanding")}
+          />
+          {v.knowsOutstanding === "yes" && (
+            <>
+              <MoneyField
+                label="Sisa pokok saat ini"
+                {...form.bind("outstanding")}
+              />
+              <NumberField
+                label="Sisa tenor"
+                suffix="bulan"
+                {...form.bind("remainingMonths")}
+              />
+            </>
+          )}
+          {v.knowsOutstanding === "no" &&
+            (estimate ? (
+              <Notice
+                role="status"
+                icon={CalculatorIcon}
+                className="sm:col-span-2"
+              >
+                Perkiraan sisa pokok ± {rupiah(estimate.outstanding)}, sisa
+                tenor {estimate.remaining} bulan (
+                {tenorLabel(estimate.remaining)}). Dihitung dari cicilan dan
+                bunga, bukan saldo resmi bank.
+              </Notice>
+            ) : (
+              <p className="text-[13px] text-muted-foreground sm:col-span-2">
+                Isi cicilan, bunga, tenor awal, dan tanggal akad untuk melihat
+                perkiraan.
+              </p>
+            ))}
+          <RateField
+            label="Penalti pelunasan dipercepat"
+            optional
+            suffix="%"
+            placeholder="2,00"
+            hint="Kosongkan jika belum tahu. Kami pakai perkiraan kebijakan bank (2%) dan menandainya estimasi."
+            span
+            {...form.bind("penalty")}
           />
         </FormGrid>
       </Group>
@@ -706,26 +902,9 @@ function GoalStep({ app, clock, setApp, navigate, fromReview }) {
         { k: "Plafon baru ≈ sisa pokok", v: rupiah(c.outstanding) },
         { k: "Biaya keluar bank lama (est.)", v: rupiah(c.exitCosts) },
         {
-          k: "Dana kamu untuk biaya",
-          v: rupiah(c.fundsForCosts),
-          tone:
-            c.fundsForCosts == null || c.exitCosts == null
-              ? undefined
-              : c.fundsForCosts >= c.exitCosts
-                ? "ok"
-                : "warn",
-        },
-        {
           k: "Rasio cicilan saat ini",
           v: percentRatio(c.dtiRatio),
-          tone:
-            c.dtiRatio == null
-              ? undefined
-              : c.dtiRatio <= 0.35
-                ? "ok"
-                : c.dtiRatio <= 0.45
-                  ? "warn"
-                  : "bad",
+          tone: dtiTone(c.dtiRatio),
         },
       ],
       tip:
@@ -1239,154 +1418,6 @@ function PropertyStep({ app, clock, setApp, next }) {
   );
 }
 
-// ---------- Step 3 ----------
-function CapacityStep({ app, setApp, next, navigate, fromReview }) {
-  const f = app.data.finance ?? {};
-  const e = app.data.employment ?? {};
-  const topup = app.optimizationMode === "topup";
-  const form = useForm(
-    {
-      vehicleDebt: moneyInput(f.vehicleDebt),
-      cardDebt: moneyInput(f.cardDebt),
-      otherDebt: moneyInput(f.otherDebt),
-      fundsForCosts: moneyInput(f.fundsForCosts),
-    },
-    validateCapacity,
-  );
-  const { saving, error, save } = useStepSave(app, 3, setApp);
-  const v = form.values;
-  const income =
-    (e.monthlyIncome ?? 0) + (e.jointIncome ? (e.partnerIncome ?? 0) : 0);
-  const obligations =
-    (app.data.oldLoan?.currentPayment ?? 0) +
-    (toMoney(v.vehicleDebt) ?? 0) +
-    (toMoney(v.cardDebt) ?? 0) +
-    (toMoney(v.otherDebt) ?? 0);
-  const dti = income > 0 ? obligations / income : null;
-  const onSubmit = form.submit(async (x) => {
-    const saved = await save({
-      finance: {
-        vehicleDebt: toMoney(x.vehicleDebt),
-        cardDebt: toMoney(x.cardDebt),
-        otherDebt: toMoney(x.otherDebt),
-        fundsForCosts: toMoney(x.fundsForCosts),
-      },
-    });
-    if (saved) {
-      form.markClean();
-      next("/optimize/4");
-    }
-  });
-  return (
-    <FormLayout
-      onSubmit={onSubmit}
-      saving={saving}
-      cta={fromReview ? "Simpan & kembali ke Review" : "Simpan & Lanjutkan"}
-      onDemo={() =>
-        form.setValues({
-          vehicleDebt: "1000000",
-          cardDebt: "500000",
-          otherDebt: "0",
-          fundsForCosts: "25000000",
-        })
-      }
-      aside={
-        <Aside
-          icon={GaugeIcon}
-          tone="warn"
-          title="Rasio cicilan saat ini"
-          rows={[
-            { k: "Penghasilan", v: rupiah(income) },
-            { k: "Total kewajiban", v: `${rupiah(obligations)}/bln` },
-            {
-              k: "Estimasi DTI",
-              v: dti == null ? "Belum tersedia" : percentRatio(dti),
-              tone:
-                dti == null
-                  ? "mute"
-                  : dti <= 0.35
-                    ? "ok"
-                    : dti <= 0.45
-                      ? "warn"
-                      : "bad",
-            },
-          ]}
-          note="Kebijakan setiap bank berbeda. DTI setelah pindah dihitung ulang per program (cicilan lama diganti cicilan baru)."
-        />
-      }
-    >
-      <UnsavedChangesGuard when={form.dirty && !saving} />
-      <ErrorSummary
-        show={form.showSummary}
-        count={Object.keys(form.errors).length}
-      />
-      <Group
-        icon={WalletIcon}
-        title="Penghasilan & KPR saat ini"
-        desc="Diambil dari langkah sebelumnya."
-      >
-        <FormGrid>
-          <ReadonlyField
-            label="Penghasilan bulanan"
-            value={rupiah(income)}
-            sub="Dari Step 1"
-            onEdit={() =>
-              navigate("/optimize/1/pekerjaan", { state: { from: "review" } })
-            }
-          />
-          <ReadonlyField
-            label="Cicilan KPR saat ini"
-            value={rupiah(app.data.oldLoan?.currentPayment)}
-            sub="Akan dilunasi saat Take Over"
-          />
-        </FormGrid>
-      </Group>
-      <Group
-        icon={CreditCardIcon}
-        title="Kewajiban lain per bulan"
-        desc="Isi 0 jika tidak ada."
-      >
-        <FormGrid>
-          <MoneyField
-            label="Cicilan kendaraan"
-            placeholder="0"
-            {...form.bind("vehicleDebt")}
-          />
-          <MoneyField
-            label="Kartu kredit / paylater"
-            placeholder="0"
-            {...form.bind("cardDebt")}
-          />
-          <MoneyField
-            label="Pinjaman lain"
-            placeholder="0"
-            {...form.bind("otherDebt")}
-          />
-          <MoneyField
-            label={
-              topup
-                ? "Dana tunai cadangan untuk biaya"
-                : "Dana untuk biaya Take Over"
-            }
-            placeholder="0"
-            hint={
-              topup
-                ? "Pada Top-up, biaya umumnya dipotong dari pencairan."
-                : "Dipakai membayar penalti, provisi, dan notaris."
-            }
-            {...form.bind("fundsForCosts")}
-          />
-        </FormGrid>
-      </Group>
-      {error && (
-        <Notice tone="bad" role="alert">
-          {error}
-        </Notice>
-      )}
-    </FormLayout>
-  );
-}
-
 // ---------- Step 6 ----------
 const GROUPS = [
   ["identity", "IDENTITAS & PENGHASILAN", IdCardIcon],
@@ -1553,7 +1584,7 @@ function TakeoverReview({ app, navigate }) {
       title: "Pekerjaan & Penghasilan",
       lines: [
         `${labelOf(OCCUPATIONS, e.occupation)} · ${e.companyName}`,
-        `Penghasilan ${rupiah(e.monthlyIncome)}`,
+        `Penghasilan ${rupiah(e.monthlyIncome)} · Kewajiban lain ${rupiah((f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0))}/bln`,
       ],
       edit: edit("/optimize/1/pekerjaan"),
     },
@@ -1564,13 +1595,6 @@ function TakeoverReview({ app, navigate }) {
         `Cicilan ${rupiah(o.currentPayment)} · ${percentBps(o.rateBps)}`,
       ],
       edit: edit("/optimize/2"),
-    },
-    {
-      title: "Kemampuan Bayar",
-      lines: [
-        `Kewajiban lain ${rupiah((f.vehicleDebt ?? 0) + (f.cardDebt ?? 0) + (f.otherDebt ?? 0))}/bln`,
-      ],
-      edit: edit("/optimize/3"),
     },
     {
       title: "Properti",
@@ -1620,10 +1644,7 @@ function TakeoverReview({ app, navigate }) {
     setError(null);
     try {
       await api.applications.submit(app.id, { consents: cons });
-      toast.success(
-        `Pengajuan terkirim ke ${s.bankName}. Data sekarang read-only.`,
-      );
-      navigate("/optimize/success", { replace: true, state: { id: app.id } });
+      navigate("/", { replace: true, state: { success: { appId: app.id } } });
     } catch (err) {
       setError(err);
       setPending(false);

@@ -1173,11 +1173,12 @@ Scheduler dedupe per mortgage+event+milestone+channel. Mortgage `closed/replaced
   "due_date": "2026-10-22",
   "amount": { "amount": 425000000, "currency": "IDR", "scale": 2 },
   "paid_at": "2026-10-21T03:12:00.000Z",
-  "note": "Dicatat manual oleh pengguna"
+  "note": "Dicatat manual oleh pengguna",
+  "proof": { "file_name": "bukti-transfer.pdf", "size_bytes": 120000, "content_type": "application/pdf" }
 }
 ```
 
-Status hasil `paid`, source `manual_user_recorded`, `bank_confirmed: false`. Idempotency mencegah duplikat.
+Status hasil `paid`, source `manual_user_recorded`, `bank_confirmed: false`. Idempotency mencegah duplikat. `proof` opsional (JPG/PNG/PDF, maks. 5MB; `FILE_TYPE_UNSUPPORTED` / `FILE_TOO_LARGE`); mock hanya menyimpan metadata, bukan isi file.
 
 ---
 

@@ -9,12 +9,13 @@ import { dateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/AppShell'
+import { PageTour } from '@/components/shared/PageTour'
 import { ConfirmDialog } from '@/components/shared/dialogs'
 import { EmptyState, ErrorPanel, Panel, PageSkeleton } from '@/components/shared/ui'
 import { activeApplication } from '@/domains/home/selectHomeState'
 import { KprSwitch } from '@/domains/applications/KprSwitch'
 import { deriveMortgage } from './derive'
-import { SETUP_STEPS } from './setupMeta'
+import { SETUP_STEPS, setupStepOf } from './setupMeta'
 
 export function MyKprResolver() {
   const navigate = useNavigate()
@@ -24,6 +25,7 @@ export function MyKprResolver() {
   if (activeApplication(snap.applications)) return <Navigate to="/my-kpr/application" replace />
   if (snap.mortgages.some((m) => m.status === 'active')) return <Navigate to="/my-kpr/overview" replace />
   const draft = snap.mortgages.find((m) => m.status === 'draft')
+  const draftStep = draft ? setupStepOf(draft) : null
 
   return (
     <>
@@ -38,7 +40,7 @@ export function MyKprResolver() {
           <ol className="flex flex-col gap-1">
             {SETUP_STEPS.map((label, i) => {
               const n = i + 1
-              const state = n < draft.setupStep ? 'done' : n === draft.setupStep ? 'current' : 'todo'
+              const state = n < draftStep ? 'done' : n === draftStep ? 'current' : 'todo'
               return (
                 <li key={label} aria-current={state === 'current' ? 'step' : undefined} className={cn('flex items-center gap-3 rounded-xl px-3.5 py-3', state === 'current' && 'bg-secondary')}>
                   {state === 'done' ? <CircleCheckIcon className="size-5 text-success" aria-hidden /> : <CircleIcon className={cn('size-5', state === 'current' ? 'text-primary' : 'text-muted-foreground')} aria-hidden />}
@@ -49,7 +51,7 @@ export function MyKprResolver() {
             })}
           </ol>
           <div className="flex flex-wrap gap-3">
-            <Button size="md" onClick={() => navigate(`/monitoring/setup/${draft.setupStep}`)}>
+            <Button size="md" onClick={() => navigate(`/monitoring/setup/${draftStep}`)}>
               Lanjutkan Pengaturan
             </Button>
             <Button size="md" variant="neutral" className="text-danger" onClick={() => setConfirm(true)}>
@@ -124,12 +126,12 @@ export function MyKprLayout() {
 
   return (
     <>
-      <PageHeader title="KPR Saya" subtitle={`${m.bankName} · KPR ${m.scheme === 'sharia' ? 'Syariah' : 'Konvensional'}`} />
+      <PageHeader title="KPR Saya" subtitle={`${m.bankName} · KPR ${m.scheme === 'sharia' ? 'Syariah' : 'Konvensional'}`} actions={<PageTour id="my-kpr" seen={snap.toursSeen} />} />
       {hasApp && <KprSwitch current="mortgage" />}
       <TabsPrimitive.Root value={tab} onValueChange={(v) => navigate(`/my-kpr/${v}`)} className="flex flex-col gap-5">
         <TabsPrimitive.List aria-label="Detail KPR" className="relative flex w-full max-w-full gap-1 self-start overflow-x-auto rounded-full border border-border bg-card p-1 sm:w-fit">
           {TABS.map(([k, label]) => (
-            <TabsPrimitive.Trigger key={k} value={k} className="h-11 shrink-0 rounded-full px-[22px] text-sm font-bold text-ink-3 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 data-[state=active]:bg-primary data-[state=active]:text-white">
+            <TabsPrimitive.Trigger key={k} value={k} data-tour={`tab-${k}`} className="h-11 shrink-0 rounded-full px-[22px] text-sm font-bold text-ink-3 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 data-[state=active]:bg-primary data-[state=active]:text-white">
               {label}
             </TabsPrimitive.Trigger>
           ))}

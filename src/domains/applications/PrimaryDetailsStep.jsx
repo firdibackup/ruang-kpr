@@ -174,7 +174,8 @@ export function PrimaryDetailsStep({ step, app, snapshot, onCreated, onSaved, fr
       form.markClean()
       onSaved(saved)
       toast('Tersimpan otomatis.')
-      if (!fromReview) go(`/apply/primary/${step + 1}`)
+      // Saving the last screen of a phase (2 / 4) opens its milestone insight first.
+      if (!fromReview) go(`/apply/primary/${step + 1}`, step === 2 || step === 4 ? { state: { milestone: step / 2 } } : undefined)
       else if (!backToReview) go('/apply/primary/4', { state: { from: 'review' } })
       else go(saved.selection ? '/apply/primary/7' : '/apply/primary/6')
     } catch (e) {
@@ -226,7 +227,7 @@ export function PrimaryDetailsStep({ step, app, snapshot, onCreated, onSaved, fr
             )}
             {step === 2 && (
               <>
-                <SelectField label="Jenis Pekerjaan" options={OCCUPATIONS} span {...b('occupation')} />
+                <SelectField label="Jenis Pekerjaan" options={OCCUPATIONS} other="Tulis jenis pekerjaan" span {...b('occupation')} />
                 <TextField label={self ? 'Nama Usaha' : 'Nama Perusahaan'} placeholder="PT Nusantara Digital" {...b('companyName')} />
                 <TextField label={self ? 'Bidang Usaha' : 'Jabatan'} placeholder="Product Designer" {...b('jobTitle')} />
                 <NumberField label="Lama Bekerja (tahun)" placeholder="4" suffix="tahun" {...b('workYears')} />

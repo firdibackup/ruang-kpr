@@ -30,17 +30,19 @@ function useTween(target, ms = 700) {
 // Linear wizard progress (artifact C12) with a percent readout. `current` is the step on screen, `reached`
 // the furthest saved step (both 1-based), so stepping back to edit never lowers the saved percent.
 // A fractional `reached` (e.g. 1.5) marks a saved sub-step inside a step.
-export function WizardProgress({ label, steps, current, reached = current, saving, savedLabel = 'Tersimpan otomatis tiap klik Simpan & Lanjutkan' }) {
+// `percent` overrides the number (still tweened) when the wizard has its own percent table.
+export function WizardProgress({ label, steps, current, reached = current, percent, saving, savedLabel = 'Tersimpan otomatis tiap klik Simpan & Lanjutkan' }) {
   const top = Math.max(current, reached)
-  const filled = useTween(top - 1) // finished steps, animated; drives both the number and the bar
+  const filled = useTween(top - 1) // finished steps, animated; drives the bar (and the number without `percent`)
+  const shownPercent = useTween(percent ?? 0)
   return (
     <div className="flex flex-col gap-3.5 rounded-3xl border border-border bg-card px-5 py-4 sm:px-[22px] sm:py-[18px]">
       <div className="flex items-center gap-4">
         <span className="flex shrink-0 items-baseline text-primary" aria-hidden>
-          <span className="tabular min-w-[2ch] text-right text-[28px] leading-none font-extrabold tracking-[-0.03em]">{Math.round((filled / steps.length) * 100)}</span>
+          <span className="tabular min-w-[2ch] text-right text-[28px] leading-none font-extrabold tracking-[-0.03em]">{Math.round(percent == null ? (filled / steps.length) * 100 : shownPercent)}</span>
           <span className="text-[15px] font-extrabold">%</span>
         </span>
-        <span className="sr-only">{stepPercent(top, steps.length)}% selesai.</span>
+        <span className="sr-only">{percent ?? stepPercent(top, steps.length)}% selesai.</span>
         <div className="flex min-w-0 flex-1 flex-col gap-1 border-l border-border pl-4">
           <span className="text-[13px] font-bold text-pretty">{label}</span>
           {saving ? (
@@ -109,6 +111,12 @@ export function StatusStepper({ steps, label = 'Tahapan pengajuan' }) {
                 {s.date}
                 <span className="sr-only"> — {s.state === 'done' ? 'selesai' : s.state === 'current' ? 'sedang berjalan' : s.state === 'rejected' ? 'ditolak' : 'belum'}</span>
               </span>
+              {s.eta && (
+                <span className="text-xs text-muted-foreground">
+                  <span className="sr-only">Estimasi </span>
+                  {s.eta}
+                </span>
+              )}
             </div>
           </li>
         )

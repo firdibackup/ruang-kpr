@@ -324,7 +324,7 @@ Tidak ada chart. Jika score tidak dapat dihitung, ganti card partial + `Lengkapi
 
 ### HOME-07 Mendekati Floating
 
-Trigger `0 < daysUntilFixedEnd <= 90`. Warning menjadi card pertama: hari tersisa, rate sekarang, **estimasi** floating, cicilan sekarang, estimasi sesudah, selisih. CTA `Lihat Pilihan` memperlihatkan Tetap, Bandingkan Take Over, Minta repricing; Take Over → Explore. Repricing hanya informational CTA `Hubungi bank kamu` bila tidak ada layanan nyata.
+Trigger `0 < daysUntilFixedEnd <= 90`. Warning menjadi card pertama: hari tersisa, rate sekarang, **estimasi** floating, cicilan sekarang, estimasi sesudah, selisih. CTA `Lihat Pilihan` membuka tab Bunga. Opsi: `Tetap di bank sekarang` → konfirmasi, lalu card disembunyikan sampai milestone berikutnya (H-60/30/14/7); `Bandingkan Take Over` → langsung daftar program bank (simulasi default dari data KPR), atau halaman Simulasi Take Over bila data pengajuan belum lengkap.
 
 Health, payment, mortgage, opportunity tetap di bawah. Threshold event H-90/60/30/14/7 tidak berarti card hanya muncul tepat hari itu; card terlihat sepanjang ≤90 hari.
 
