@@ -60,25 +60,45 @@ export function nextMilestone(days) {
   return FIXED_MILESTONES.filter((h) => days <= h).at(-1) ?? null
 }
 
+// KPR Health formula, version 1 (admin plan §4.7). Later versions are published from the admin console and reach
+// pages through the dashboard snapshot (`config.health`); version 1 stays the default. Limits are bps of a ratio
+// (DTI, LTV) or days (fixed period left); `upTo: null` is the open last band. JSON-safe on purpose (no Infinity).
+export const HEALTH_V1 = {
+  version: 1,
+  params: {
+    dti: [{ upTo: 3000, score: 90 }, { upTo: 3500, score: 75 }, { upTo: 4000, score: 62 }, { upTo: 5000, score: 40 }, { upTo: null, score: 20 }],
+    ltv: [{ upTo: 5000, score: 90 }, { upTo: 7000, score: 75 }, { upTo: 8000, score: 60 }, { upTo: 10_000, score: 40 }, { upTo: null, score: 20 }],
+    rate: { floating: 50, fixedDays: [{ upTo: 90, score: 58 }, { upTo: 365, score: 75 }, { upTo: null, score: 90 }] },
+    progress: { base: 50, perPaid: 70 },
+    weights: { dti: 1, ltv: 1, rate: 1, progress: 1 },
+    labels: { healthy: 80, attention: 60 },
+  },
+}
+
 // Provisional KPR Health (PRD §11.2, open question #7): documented thresholds, not a bank credit score.
 // Missing components are reported as null and the overall score is marked partial — never a fake zero.
-export function healthScore({ dtiRatio, ltvRatio, mode, daysUntilFixedEnd, paidRatio }) {
-  const band = (value, steps) => steps.find(([limit]) => value <= limit)[1]
+export function healthScore({ dtiRatio, ltvRatio, mode, daysUntilFixedEnd, paidRatio }, config = HEALTH_V1) {
+  const p = config.params
+  const band = (value, steps, scale = 1) => steps.find((s) => s.upTo === null || value <= s.upTo / scale).score
+  const toneOf = (score) => (score >= p.labels.healthy ? 'ok' : score >= p.labels.attention ? 'warn' : 'bad')
   const components = [
-    { key: 'dti', name: 'Beban cicilan', score: dtiRatio == null ? null : band(dtiRatio, [[0.3, 90], [0.35, 75], [0.4, 62], [0.5, 40], [Infinity, 20]]) },
-    { key: 'ltv', name: 'Nilai properti', score: ltvRatio == null ? null : band(ltvRatio, [[0.5, 90], [0.7, 75], [0.8, 60], [1, 40], [Infinity, 20]]) },
-    { key: 'rate', name: 'Risiko bunga', score: mode == null ? null : mode === 'floating' ? 50 : band(daysUntilFixedEnd ?? Infinity, [[90, 58], [365, 75], [Infinity, 90]]) },
-    { key: 'progress', name: 'Progres pinjaman', score: paidRatio == null ? null : Math.min(100, Math.round(50 + 70 * paidRatio)) },
-  ]
+    { key: 'dti', name: 'Beban cicilan', score: dtiRatio == null ? null : band(dtiRatio, p.dti, 10_000) },
+    { key: 'ltv', name: 'Nilai properti', score: ltvRatio == null ? null : band(ltvRatio, p.ltv, 10_000) },
+    { key: 'rate', name: 'Risiko bunga', score: mode == null ? null : mode === 'floating' ? p.rate.floating : band(daysUntilFixedEnd ?? Infinity, p.rate.fixedDays) },
+    { key: 'progress', name: 'Progres pinjaman', score: paidRatio == null ? null : Math.min(100, Math.round(p.progress.base + p.progress.perPaid * paidRatio)) },
+  ].map((c) => ({ ...c, tone: c.score === null ? 'mute' : toneOf(c.score) }))
   const known = components.filter((c) => c.score !== null)
-  if (!known.length) return { score: null, partial: true, label: 'Belum lengkap', tone: 'mute', components }
-  const score = Math.round(known.reduce((s, c) => s + c.score, 0) / known.length)
+  const counted = known.filter((c) => p.weights[c.key] > 0)
+  if (!counted.length) return { score: null, partial: true, label: 'Belum lengkap', tone: 'mute', components, version: config.version }
+  const weight = counted.reduce((s, c) => s + p.weights[c.key], 0)
+  const score = Math.round(counted.reduce((s, c) => s + c.score * p.weights[c.key], 0) / weight)
   return {
     score,
     partial: known.length < components.length,
-    label: score >= 80 ? 'Sehat' : score >= 60 ? 'Perlu perhatian' : 'Berisiko',
-    tone: score >= 80 ? 'ok' : score >= 60 ? 'warn' : 'bad',
+    label: score >= p.labels.healthy ? 'Sehat' : score >= p.labels.attention ? 'Perlu perhatian' : 'Berisiko',
+    tone: toneOf(score),
     components,
+    version: config.version,
   }
 }
 
@@ -102,7 +122,8 @@ function paymentWindow(m, asOf, nextDue) {
   return { dueWindow, payableDues, paymentAlert: days > PAYMENT_ALERT_DAYS ? null : { due, days, tone: days > 0 ? 'warn' : 'bad' } }
 }
 
-export function deriveMortgage(m, asOf) {
+// `healthConfig`: the published KPR Health version from the snapshot; pages that show no score leave it out.
+export function deriveMortgage(m, asOf, healthConfig) {
   const { mode, daysUntilFixedEnd } = rateMode(m, asOf)
   const nextDue = nextUnpaidDue(m, asOf)
   const { schedule, missing, error, fixedMonths } = buildSchedule(m, asOf)
@@ -142,6 +163,6 @@ export function deriveMortgage(m, asOf) {
     partialProperty: !(value > 0),
     paidRatio,
     floatingImpact,
-    health: healthScore({ dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, mode, daysUntilFixedEnd, paidRatio }),
+    health: healthScore({ dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, mode, daysUntilFixedEnd, paidRatio }, healthConfig),
   }
 }

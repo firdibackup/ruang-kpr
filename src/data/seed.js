@@ -7,7 +7,7 @@ import { BANK_PRODUCTS } from './catalog'
 import { requiredDocuments } from './documentRules'
 
 export const CLOCK = '2026-09-28'
-export const SCHEMA_VERSION = 2 // v2: KPR Primary wizard has 7 steps
+export const SCHEMA_VERSION = 3 // v3: one browser keeps many accounts (db.accounts); users carry a role
 
 export const SCENARIOS = [
   { id: 'guest', label: 'Belum daftar (registrasi)' },
@@ -27,9 +27,11 @@ export const SCENARIOS = [
   { id: 'mortgage_partial_rate', label: 'KPR aktif · estimasi floating kosong' },
   { id: 'takeover_no_break_even', label: 'KPR aktif bunga rendah (Take Over tanpa break-even)' },
   { id: 'takeover_in_process', label: 'Take Over diproses bank' },
+  { id: 'admin_ops', label: 'Super admin · antrean pengajuan' },
+  { id: 'content_writer', label: 'Content writer · artikel' },
 ]
 
-const USER = { id: 'usr_01J8Z0Y5MA6W2Q9T4P7K3R1CDE', name: 'Firdi Audi', contact: '081234567890', contactType: 'phone' }
+const USER = { id: 'usr_01J8Z0Y5MA6W2Q9T4P7K3R1CDE', name: 'Firdi Audi', contact: '081234567890', contactType: 'phone', role: 'user', createdAt: '2026-09-15T02:00:00.000Z' }
 
 export const PROFILE_FULL = {
   fullName: 'Firdi Audi',
@@ -82,6 +84,7 @@ function base(scenario, extra = {}) {
     activities: [],
     flags: {},
     meta: { seededAt: CLOCK, catalogVersion: 'catalog-2026-09' },
+    accounts: [newAccount({ ...ADMIN }), ...sampleAccounts()],
     ...extra,
   }
 }
@@ -219,9 +222,9 @@ const PRIMARY_DATA = {
 
 const uploadedDoc = (type, fileName, status = 'uploaded') => ({ status, fileName, sizeBytes: 842_115, contentType: fileName.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg', uploadedAt: '2026-09-18', invalidReason: null })
 
-const PRIMARY_DOCS = (status = 'uploaded') => ({
-  ktp: uploadedDoc('ktp', 'ktp-firdi-audi.jpg', status),
-  npwp: uploadedDoc('npwp', 'npwp-firdi-audi.pdf', status),
+const PRIMARY_DOCS = (status = 'uploaded', who = 'firdi-audi') => ({
+  ktp: uploadedDoc('ktp', `ktp-${who}.jpg`, status),
+  npwp: uploadedDoc('npwp', `npwp-${who}.pdf`, status),
   income_proof: uploadedDoc('income_proof', 'slip-gaji-jul-sep-2026.pdf', status),
   property_document: uploadedDoc('property_document', 'ppjb-griya-asri-c2.pdf', status),
 })
@@ -300,11 +303,11 @@ function submittedPrimary(status, extra = {}) {
   })
 }
 
-function takeoverInProcess(mortgage) {
+function takeoverInProcess(mortgage, { id = 'app_01J8Z7TK0VER4Q2AB7M5N8XKCF', personal = PRIMARY_DATA.personal, employment = PRIMARY_DATA.employment } = {}) {
   const product = BANK_PRODUCTS.find((p) => p.id === 'bpr_xyz_takeover_fix5_v3')
   const sim = simulateLoan({ product, principal: mortgage.outstandingPrincipal, termMonths: 180 })
   const app = {
-    id: 'app_01J8Z7TK0VER4Q2AB7M5N8XKCF',
+    id,
     productType: 'takeover',
     optimizationMode: 'takeover',
     source: 'mortgage',
@@ -313,8 +316,8 @@ function takeoverInProcess(mortgage) {
     currentStep: 7,
     stepCount: 7,
     data: {
-      personal: { ...PRIMARY_DATA.personal },
-      employment: { ...PRIMARY_DATA.employment },
+      personal: { ...personal },
+      employment: { ...employment },
       oldLoan: {
         bankName: mortgage.bankName,
         productName: mortgage.productName,
@@ -334,8 +337,8 @@ function takeoverInProcess(mortgage) {
         source: 'official',
       },
       goal: { mode: 'takeover', goal: 'lower_payment', tenorMonths: 180, maxPayment: null, requestedTopup: 0, purpose: null },
-      property: { propertyType: 'landed_house', city: PROPERTY.city, address: PROPERTY.address, landArea: 72, buildingArea: 45, certificateType: 'shm', certificateOwner: 'Firdi Audi', estimatedValue: PROPERTY.estimatedValue, disputed: false },
-      finance: { vehicleDebt: 1_000_000, cardDebt: 500_000, otherDebt: 0 },
+      property: { propertyType: 'landed_house', city: mortgage.property.city, address: mortgage.property.address, landArea: 72, buildingArea: 45, certificateType: 'shm', certificateOwner: personal.fullName, estimatedValue: mortgage.property.estimatedValue, disputed: false },
+      finance: { vehicleDebt: employment.vehicleDebt, cardDebt: employment.cardDebt, otherDebt: employment.otherDebt },
     },
     documents: {},
     selection: {
@@ -377,6 +380,137 @@ function takeoverInProcess(mortgage) {
 
 const warningMortgage = () => fixedMortgage({ startDate: '2021-12-22', fixedUntil: '2026-12-22' })
 const normalMortgage = (opts = {}) => fixedMortgage({ startDate: '2022-04-22', fixedUntil: '2027-04-22', ...opts })
+
+// ---- accounts ----
+
+// One account's data. The signed-in account sits at the top level of db, so B2C operations keep reading
+// db.profile, db.applications, …; every other account in this browser waits in db.accounts until its contact
+// verifies again (admin dashboard plan §7).
+export const ACCOUNT_KEYS = ['user', 'profile', 'finance', 'applications', 'mortgages', 'simulation', 'activities', 'dashboardLayout', 'toursSeen', 'takeoverKept']
+export const pickAccount = (db) => Object.fromEntries(ACCOUNT_KEYS.filter((k) => k in db).map((k) => [k, db[k]]))
+export const newAccount = (user = null) => ({ user, profile: {}, finance: {}, applications: [], mortgages: [], simulation: null, activities: [] })
+
+// Staff sign in through the same register + OTP flow with these emails (roles in roles.js).
+const ADMIN = { id: 'usr_admin_01', name: 'Admin RuangKPR', contact: 'admin@ruangkpr.id', contactType: 'email', role: 'super_admin', createdAt: '2026-09-01T02:00:00.000Z' }
+const WRITER = { id: 'usr_writer_01', name: 'Penulis Konten', contact: 'penulis@ruangkpr.id', contactType: 'email', role: 'content_writer', createdAt: '2026-09-01T02:00:00.000Z' }
+// A staff contact signing in for the first time in this browser gets its staff account, not a user account.
+export function staffAccount(contact) {
+  const staff = [ADMIN, WRITER].find((s) => s.contact === contact)
+  return staff ? newAccount({ ...staff }) : null
+}
+
+// Fictional sample users so the admin queue has work in every status. Each NIK carries an impossible birth
+// date (000000), so none can belong to a real person.
+const SAMPLES = {
+  rina: { key: '01', name: 'Rina Hartati', contact: '081200000101', gender: 'female', birthDate: '1994-03-08', city: 'Kota Depok', income: 14_000_000, joined: 25 },
+  budi: { key: '02', name: 'Budi Santoso', contact: '081200000102', gender: 'male', birthDate: '1990-11-21', city: 'Kota Bekasi', income: 15_000_000, joined: 19 },
+  dewi: { key: '03', name: 'Dewi Lestari', contact: 'dewi.lestari@example.com', gender: 'female', birthDate: '1988-06-30', city: 'Kota Tangerang Selatan', income: 22_000_000, joined: 13 },
+  agus: { key: '04', name: 'Agus Pratama', contact: '081200000104', gender: 'male', birthDate: '1987-01-17', city: 'Kota Bogor', income: 18_000_000, joined: 8 },
+  sari: { key: '05', name: 'Sari Wulandari', contact: '081200000105', gender: 'female', birthDate: '1985-09-02', city: 'Kota Bekasi', income: 16_000_000, joined: 22 },
+  hendra: { key: '06', name: 'Hendra Gunawan', contact: 'hendra.gunawan@example.com', gender: 'male', birthDate: '1992-04-25', city: 'Kota Depok', income: 9_000_000, debt: 3_000_000, joined: 16 },
+  yoga: { key: '07', name: 'Yoga Saputra', contact: '081200000107', gender: 'male', birthDate: '1991-12-11', city: 'Kota Tangerang', income: 20_000_000, joined: 14 },
+  maya: { key: '08', name: 'Maya Putri', contact: 'maya.putri@example.com', gender: 'female', birthDate: '1997-07-19', city: 'Kota Jakarta Selatan', income: 12_000_000, joined: 27 },
+}
+const PRIMARY_STEPS = ['submitted', 'docs_verification', 'bank_processing', 'appraisal', 'approved', 'akad', 'disbursed']
+const sept = (day, time = '03:00:00') => `2026-09-${String(day).padStart(2, '0')}T${time}.000Z`
+
+// Profile, finance, and the same data split the way an application stores it.
+function personOf(p) {
+  const profile = {
+    fullName: p.name,
+    nik: `3276010000000${p.key.padStart(3, '0')}`,
+    birthPlace: p.city.replace('Kota ', ''),
+    birthDate: p.birthDate,
+    gender: p.gender,
+    maritalStatus: 'single',
+    address: `Jl. Contoh No. ${Number(p.key)}, ${p.city}`,
+    [p.contact.includes('@') ? 'email' : 'phone']: p.contact,
+    occupation: 'private_employee',
+    companyName: 'PT Contoh Sejahtera',
+    jobTitle: 'Staf Administrasi',
+    workYears: 5,
+    workMonths: 0,
+  }
+  const finance = { monthlyIncome: p.income, jointIncome: false, partnerIncome: null, vehicleDebt: p.debt ?? 0, cardDebt: 0, otherDebt: 0, routineExpenses: null, emergencyFund: null }
+  const { occupation, companyName, jobTitle, workYears, workMonths, ...personal } = profile
+  const { routineExpenses: _r, emergencyFund: _e, ...debts } = finance
+  return { profile, finance, personal, employment: { occupation, companyName, jobTitle, workYears, workMonths, ...debts } }
+}
+
+// A submitted KPR Primary application that walked `steps`, one status per day from `day`.
+function sampleApplication(p, { product, price, loan, tenor, day, steps }, extra = {}) {
+  const { personal, employment } = personOf(p)
+  const data = {
+    personal,
+    employment,
+    property: { purchaseType: 'new_from_developer', developerName: 'PT Graha Contoh', sellerName: null, propertyType: 'landed_house', address: `Perumahan Graha Contoh Blok ${p.key}, ${p.city}`, city: p.city, price },
+    loan: { downPayment: price - loan, amount: loan, amountEdited: false, tenorMonths: tenor, savings: null },
+  }
+  const selection = selectionFor(product, loan, tenor)
+  const submittedAt = sept(day)
+  return primaryApplication({
+    id: `app_sample_${p.key}`,
+    status: steps.at(-1),
+    currentStep: 7,
+    data,
+    documents: PRIMARY_DOCS(steps.includes('bank_processing') ? 'verified' : 'uploaded', p.name.toLowerCase().replaceAll(' ', '-')),
+    selection,
+    history: steps.map((status, i) => ({ status, at: sept(day + i) })),
+    extra: {
+      createdAt: sept(day - 1, '08:00:00'),
+      submittedAt,
+      consents: { dataAccuracy: true, sendToBank: true, acceptedAt: submittedAt },
+      snapshot: { data: structuredClone(data), selection, calculationVersion: 'calc-1.0.0', capturedAt: submittedAt },
+      ...extra,
+    },
+  })
+}
+
+function sampleAccount(p, applications = [], mortgages = []) {
+  const { profile, finance } = personOf(p)
+  const user = { id: `usr_sample_${p.key}`, name: p.name, contact: p.contact, contactType: p.contact.includes('@') ? 'email' : 'phone', role: 'user', createdAt: sept(p.joined, '02:00:00') }
+  return { ...newAccount(user), profile, finance, applications, mortgages }
+}
+
+function sampleAccounts() {
+  const { rina, budi, dewi, agus, sari, hendra, yoga, maya } = SAMPLES
+
+  const budiApp = sampleApplication(budi, { product: 'bpr_abc_primary_fix5_v4', price: 500_000_000, loan: 400_000_000, tenor: 240, day: 21, steps: ['submitted', 'docs_verification', 'additional_docs_requested'] }, {
+    pendingActions: [{ id: 'pa_sample_02', type: 'document_update', documentType: 'income_proof', message: 'Slip gaji 3 bulan terakhir belum lengkap.', requestedAt: sept(23) }],
+  })
+  budiApp.documents.income_proof = { ...budiApp.documents.income_proof, status: 'needs_update', invalidReason: 'Slip gaji Agustus belum ada.' }
+
+  const sariPerson = personOf(sari)
+  const sariMortgage = { ...floatingMortgage(), id: 'mtg_sample_05', property: { ...PROPERTY, address: `Jl. Contoh No. 5, ${sari.city}`, city: sari.city, certificateOwner: sari.name }, finance: sariPerson.finance, payments: [] }
+  const sariApp = takeoverInProcess(sariMortgage, { id: 'app_sample_05', personal: sariPerson.personal, employment: sariPerson.employment })
+
+  const yogaApp = sampleApplication(yoga, { product: 'bpr_abc_primary_fix5_v4', price: 750_000_000, loan: 600_000_000, tenor: 240, day: 16, steps: PRIMARY_STEPS })
+  const yogaMortgage = {
+    ...fixedMortgage({ startDate: '2026-09-22', fixedUntil: '2031-09-22', floatingBps: 1050 }),
+    id: 'mtg_sample_07',
+    source: 'application',
+    applicationId: yogaApp.id,
+    property: { ...PROPERTY, address: yogaApp.data.property.address, city: yoga.city, certificateOwner: yoga.name, estimatedValue: 750_000_000, valueAsOf: '2026-09-22' },
+    finance: personOf(yoga).finance,
+    payments: [],
+    activatedAt: '2026-09-22',
+  }
+
+  return [
+    sampleAccount(rina, [sampleApplication(rina, { product: 'bpr_xyz_primary_fix3_v3', price: 550_000_000, loan: 450_000_000, tenor: 240, day: 27, steps: PRIMARY_STEPS.slice(0, 1) })]),
+    sampleAccount(budi, [budiApp]),
+    sampleAccount(dewi, [sampleApplication(dewi, { product: 'bpr_def_primary_fix10_v2', price: 750_000_000, loan: 600_000_000, tenor: 300, day: 15, steps: PRIMARY_STEPS.slice(0, 4) })]),
+    sampleAccount(agus, [sampleApplication(agus, { product: 'bpr_abc_primary_fix5_v4', price: 650_000_000, loan: 500_000_000, tenor: 240, day: 10, steps: PRIMARY_STEPS.slice(0, 5) })]),
+    sampleAccount(sari, [sariApp], [sariMortgage]),
+    sampleAccount(hendra, [
+      sampleApplication(hendra, { product: 'bpr_xyz_primary_fix3_v3', price: 550_000_000, loan: 500_000_000, tenor: 240, day: 18, steps: [...PRIMARY_STEPS.slice(0, 3), 'rejected'] }, {
+        rejection: { code: 'DTI_ABOVE_BANK_POLICY', displayReason: 'Rasio cicilan melebihi batas bank (cicilan > 35% penghasilan).', relevantStep: 2, rejectedAt: sept(21) },
+      }),
+    ]),
+    sampleAccount(yoga, [yogaApp], [yogaMortgage]),
+    sampleAccount(maya),
+  ]
+}
 
 export function createSeed(scenario = 'guest') {
   switch (scenario) {
@@ -462,6 +596,11 @@ export function createSeed(scenario = 'guest') {
         ],
       })
     }
+    case 'admin_ops':
+      // Signed in as the super admin; Firdi (application at the bank) waits in the queue with the sample users.
+      return base(scenario, { ...newAccount({ ...ADMIN }), accounts: [pickAccount(createSeed('application_in_process')), ...sampleAccounts()] })
+    case 'content_writer':
+      return base(scenario, newAccount({ ...WRITER }))
     default:
       return createSeed('guest')
   }

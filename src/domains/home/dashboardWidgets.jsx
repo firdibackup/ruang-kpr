@@ -363,7 +363,7 @@ function HealthWidget({ d, onAskIncome }) {
         </span>
         <Chip tone={health.tone}>{health.label}</Chip>
         <p className="text-sm leading-[21px] text-ink-2 [@container(max-height:14rem)]:hidden">
-          {health.score >= 80
+          {health.tone === "ok"
             ? "Kondisi KPR kamu sehat."
             : HEALTH_SENTENCE[weakest?.key]}
         </p>

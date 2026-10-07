@@ -69,6 +69,17 @@ export function useForm(initial, validate) {
   }
 }
 
+// App shells: each navigation starts at the top and moves focus to the new page for keyboard and
+// screen-reader users (not on first load).
+export function useRouteFocus(pathname) {
+  const firstRender = useRef(true)
+  useEffect(() => {
+    window.scrollTo(0, 0)
+    if (!firstRender.current) document.getElementById('main')?.focus({ preventScroll: true })
+    firstRender.current = false
+  }, [pathname])
+}
+
 export function useCountdown(targetMs) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {

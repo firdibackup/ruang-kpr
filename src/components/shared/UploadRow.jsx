@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { CircleAlertIcon, FileCheckIcon, FileXIcon, LoaderCircleIcon, TriangleAlertIcon, UploadIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ACCEPTED_EXTENSIONS, MAX_FILE_BYTES } from '@/data/documentRules'
+import { DEFAULT_UPLOAD, acceptOf, uploadProblem } from '@/data/documentRules'
 import { ProgressBar } from './ui'
 
 const VIEW = {
@@ -14,8 +14,8 @@ const VIEW = {
 }
 
 // Document checklist row (artifact C23): pending → uploading → uploaded / error, retry per item.
-// Only metadata leaves this component; file bytes are never persisted.
-export function UploadRow({ doc, state, onUpload, readOnly = false, compact = false }) {
+// Only metadata leaves this component; file bytes are never persisted. `rules`: the snapshot's `config.upload`.
+export function UploadRow({ doc, state, onUpload, readOnly = false, compact = false, rules = DEFAULT_UPLOAD }) {
   const input = useRef(null)
   const [local, setLocal] = useState(null) // { status: 'uploading'|'error', pct, message }
   const status = local?.status ?? state?.status ?? 'pending'
@@ -28,8 +28,8 @@ export function UploadRow({ doc, state, onUpload, readOnly = false, compact = fa
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (!ACCEPTED_EXTENSIONS.test(file.name)) return setLocal({ status: 'error', message: 'Format tidak didukung. Gunakan JPG, PNG, atau PDF.' })
-    if (file.size > MAX_FILE_BYTES) return setLocal({ status: 'error', message: 'Ukuran file lebih dari 5MB. Kompres dulu, lalu coba lagi.' })
+    const problem = uploadProblem(file, rules)
+    if (problem) return setLocal({ status: 'error', message: problem.message })
     setLocal({ status: 'uploading', pct: 5 })
     try {
       await onUpload({ name: file.name, size: file.size, type: file.type }, (pct) => setLocal((l) => (l?.status === 'uploading' ? { ...l, pct } : l)))
@@ -64,7 +64,7 @@ export function UploadRow({ doc, state, onUpload, readOnly = false, compact = fa
             {buttonLabel}
           </button>
         )}
-        <input ref={input} type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" className="sr-only" tabIndex={-1} onChange={onFile} aria-hidden />
+        <input ref={input} type="file" accept={acceptOf(rules)} className="sr-only" tabIndex={-1} onChange={onFile} aria-hidden />
       </div>
       {status === 'uploading' && <ProgressBar value={local?.pct ?? 0} size="sm" label={`Progres unggah ${doc.label}`} />}
       {status === 'error' && local?.message && (

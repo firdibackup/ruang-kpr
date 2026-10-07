@@ -2,6 +2,7 @@ import { Navigate, Outlet, RouterProvider, createBrowserRouter } from 'react-rou
 import { Toaster } from 'sonner'
 import { AppShell } from '@/components/layout/AppShell'
 import { SessionProvider, useSession } from '@/domains/session/SessionProvider'
+import { STAFF } from '@/data/roles'
 import { RegisterPage, VerifyPage } from '@/domains/session/AuthPages'
 import { HomePage } from '@/domains/home/HomePage'
 import { PrimaryWizard } from '@/domains/applications/PrimaryWizard'
@@ -19,13 +20,27 @@ import { GoalStartPage } from '@/domains/optimize/GoalStartPage'
 import { BaselinePage, ProgramsPage, ProgramDetailPage, ConfirmProgramPage } from '@/domains/optimize/ProgramPages'
 import { ActivityPage } from '@/domains/activity/ActivityPage'
 import { ProfilePage, ProfileEditPage, ReminderSettingsPage } from '@/domains/profile/ProfilePages'
+import { AdminLayout, ForbiddenPage } from '@/domains/admin/AdminLayout'
+import { OverviewPage as AdminOverviewPage } from '@/domains/admin/OverviewPage'
+import { UserDetailPage, UserListPage } from '@/domains/admin/UsersPages'
+import { ApplicationDetailPage, ApplicationListPage } from '@/domains/admin/ApplicationsPages'
+import { BankListPage, ProductFormPage, ProductListPage } from '@/domains/admin/CatalogPages'
+import { ArticleFormPage, ArticleListPage } from '@/domains/admin/ArticlesPages'
+import { ReportsPage } from '@/domains/admin/ReportsPage'
+import { ConfigurationPage, HealthConfigPage } from '@/domains/admin/ConfigurationPage'
+import { AuditLogPage } from '@/domains/admin/AuditLogPage'
 import { NotFoundPage } from './NotFoundPage'
 import { DevPanel } from './DevPanel'
 
-function RequireAuth() {
+// B2C pages send staff to their admin home (roles.js); /admin answers everyone else with a 403, never a silent
+// redirect. UX only: every admin operation checks the role again in the data layer.
+function RequireAuth({ admin = false }) {
   const { session } = useSession()
   if (session.status === 'pending') return <Navigate to="/verify" replace />
   if (session.status !== 'authenticated') return <Navigate to="/register" replace />
+  const home = STAFF[session.role]?.home
+  if (admin && !home) return <ForbiddenPage />
+  if (!admin && home) return <Navigate to={home} replace />
   return <Outlet />
 }
 
@@ -39,6 +54,34 @@ function GuestOnly({ pending = false }) {
 const router = createBrowserRouter([
   { element: <GuestOnly />, children: [{ path: '/register', element: <RegisterPage /> }] },
   { element: <GuestOnly pending />, children: [{ path: '/verify', element: <VerifyPage /> }] },
+  {
+    path: '/admin',
+    element: <RequireAuth admin />,
+    children: [
+      {
+        element: <AdminLayout />,
+        children: [
+          { index: true, element: <AdminOverviewPage /> },
+          { path: 'users', element: <UserListPage /> },
+          { path: 'users/:userId', element: <UserDetailPage /> },
+          { path: 'applications', element: <ApplicationListPage /> },
+          { path: 'applications/:applicationId', element: <ApplicationDetailPage /> },
+          { path: 'products', element: <ProductListPage /> },
+          { path: 'products/new', element: <ProductFormPage /> },
+          { path: 'products/:productId', element: <ProductFormPage /> },
+          { path: 'banks', element: <BankListPage /> },
+          { path: 'articles', element: <ArticleListPage /> },
+          { path: 'articles/new', element: <ArticleFormPage /> },
+          { path: 'articles/:articleId', element: <ArticleFormPage /> },
+          { path: 'reports', element: <ReportsPage /> },
+          { path: 'configuration', element: <ConfigurationPage /> },
+          { path: 'configuration/health', element: <HealthConfigPage /> },
+          { path: 'audit-log', element: <AuditLogPage /> },
+          { path: '*', element: <NotFoundPage to="/admin" label="Kembali ke Overview" /> },
+        ],
+      },
+    ],
+  },
   {
     element: <RequireAuth />,
     children: [

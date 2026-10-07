@@ -23,13 +23,14 @@ function calc(fn) {
 }
 
 // Same provisional score as the monitored-mortgage KPR Health; propertyValue is passed live from the form.
-export function applicationHealth({ employment, oldLoan: o = {}, finance }, clock, propertyValue) {
+// healthConfig: the snapshot's published version (version 1 when left out).
+export function applicationHealth({ employment, oldLoan: o = {}, finance }, clock, propertyValue, healthConfig) {
   const income = incomeOf(employment)
   const dti = income > 0 && o.currentPayment > 0 ? calc(() => calculateDti({ monthlyIncome: income, mortgagePayment: o.currentPayment, otherMonthlyDebt: debtOf(finance) })) : null
   const property = propertyValue > 0 && o.outstanding > 0 ? calc(() => calculatePropertyMetrics({ propertyValue, outstanding: o.outstanding })) : null
   const rate = rateOf(o, clock)
   const paidRatio = o.originalPrincipal > 0 && o.outstanding >= 0 ? Math.min(1, Math.max(0, (o.originalPrincipal - o.outstanding) / o.originalPrincipal)) : 0
-  const health = healthScore({ dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, mode: rate.mode, daysUntilFixedEnd: rate.daysUntilFixedEnd, paidRatio })
+  const health = healthScore({ dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, mode: rate.mode, daysUntilFixedEnd: rate.daysUntilFixedEnd, paidRatio }, healthConfig)
   return { ...health, dtiRatio: dti?.dtiRatio ?? null, ltvRatio: property?.ltvRatio ?? null, rate, paidRatio }
 }
 

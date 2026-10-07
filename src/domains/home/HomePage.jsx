@@ -112,7 +112,7 @@ export function HomePage() {
   const home = selectHomeState(snap, snap.clock);
   const app = home.application;
   const active = home.activeMortgage;
-  const derived = active ? deriveMortgage(active, snap.clock) : null;
+  const derived = active ? deriveMortgage(active, snap.clock, snap.config.health) : null;
   const subtitle = SUBTITLE[home.state] ?? "Ini kondisi KPR kamu hari ini.";
   const board = active && !app;
   const emptyBoard = snap.dashboardLayout?.length === 0;

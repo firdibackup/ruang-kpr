@@ -358,6 +358,7 @@ Error upload tambahan: `UPLOAD_EXPIRED`, `UPLOAD_CHECKSUM_MISMATCH`, `FILE_SCAN_
 | POST | `/simulations/{id}/apply` | `simulations.apply` |
 | GET | `/activities` | `activities.list` |
 | POST | `/activities/{id}/read` | `activities.markRead` |
+| GET | `/admin/users` | `admin.users.list` (khusus `super_admin`; endpoint admin lain di §28) |
 
 ---
 
@@ -425,7 +426,7 @@ Mock OTP fixture: `148260` sukses, `000000` → `OTP_INVALID`, `999999` → `OTP
 
 ### 7.3 Session/logout
 
-`GET /auth/session` mengembalikan `{ "authenticated": true, "user": {...} }`.  
+`GET /auth/session` mengembalikan `{ "authenticated": true, "role": "user", "user": {...} }`. `role` melekat pada akun (`user | super_admin`) dan bernilai `null` bila belum login (§28.1).  
 `POST /auth/logout` mengembalikan `{ "logged_out": true }` dan mock menghapus session state.
 
 ---
@@ -1465,6 +1466,9 @@ Fixture disarankan satu file domain JSON, tanpa duplikasi response per layar. Mo
 | `stale_catalog` | product stale/expired | warning/error |
 | `upload_failure` | token `mock-upload-fail` | upload retry |
 | `otp_invalid` | OTP `000000` | inline error |
+| `admin_ops` | login sebagai `super_admin`; Firdi (`bank_processing`) + user contoh di `accounts` | — (layar admin) |
+
+Semua skenario menyertakan akun admin (`admin@ruangkpr.id`) dan delapan user contoh fiktif di `accounts` (§28.6).
 
 ### 22.3 Core fixture
 
@@ -1599,6 +1603,8 @@ Adapter compatibility dianggap lulus jika suite yang sama dijalankan terhadap `m
 16. Version conflict tidak menimpa perubahan baru.
 17. Upload retry tidak menghapus field/form lain.
 18. Home priority konsisten untuk setiap named scenario.
+19. Endpoint admin menolak tanpa session (`AUTH_REQUIRED`) dan role selain `super_admin` (`FORBIDDEN`).
+20. Mock: mendaftar dengan kontak baru tidak menimpa akun lain; `deleteAccount` hanya menghapus akun yang login.
 
 Contoh assert tanpa framework tertentu:
 
@@ -1639,3 +1645,110 @@ console.assert(schedule.reconciliation.final_balance_zero)
 - Tidak ada provider/database/storage choice dalam contract ini.
 
 Dengan batas ini, surface UI dan domain payload tetap stabil sementara implementasi di belakang `httpApi` dapat ditentukan kemudian tanpa mengganti komponen frontend.
+
+---
+
+## 28. Admin (`super_admin`)
+
+Layar, matrix transisi, dan fase ada di `2026-10-07_110428-admin-dashboard.md`. Bagian ini mengunci kontraknya.
+
+### 28.1 Role dan akses
+
+- Role melekat pada akun: `user | super_admin | content_writer`. `GET /auth/session` mengembalikan `role`, `null` bila belum login.
+- Staff login lewat alur OTP yang sama (§7). Fixture mock: `admin@ruangkpr.id` (super admin) dan `penulis@ruangkpr.id` (content writer), OTP `148260`.
+- Semua `/admin/*` butuh session (`401 AUTH_REQUIRED`) dan role staff yang memegang modulnya (`403 FORBIDDEN`, tanpa membocorkan resource): `super_admin` semua modul, `content_writer` hanya `/admin/articles*`.
+- Setiap mutation admin wajib `reason` dan `expected_version` (§3.6; mismatch → `409 CONFLICT_VERSION`) serta menulis audit event (§28.5).
+
+### 28.2 Endpoint
+
+| Method | Path | Adapter method | Mock |
+|---|---|---|---|
+| GET | `/admin/users?query=&in_process=&has_active_mortgage=` | `admin.users.list` | ada |
+| GET | `/admin/users/{id}` | `admin.users.get` | ada |
+| PATCH | `/admin/users/{id}/profile` | `admin.users.updateProfile` | ada |
+| PATCH | `/admin/users/{id}/finance` | `admin.users.updateFinance` | ada |
+| GET | `/admin/overview` | `admin.overview.get` | ada |
+| GET | `/admin/applications?status=&product_type=&bank_name=&pending_action=&from=&to=&query=` | `admin.applications.list` → `{ items, banks }` | ada |
+| GET | `/admin/applications/{id}` | `admin.applications.get` | ada |
+| POST | `/admin/applications/{id}/transitions` | `admin.applications.transition` | ada |
+| POST | `/admin/applications/{id}/notes` | `admin.applications.addNote` | ada |
+| GET/POST/PATCH | `/admin/banks`, `/admin/banks/{id}` | `admin.banks.list/create/update` | ada |
+| GET/POST/PATCH | `/admin/products`, `/admin/products/{id}` | `admin.products.list/get/create/update` | ada |
+| POST | `/admin/products/{id}/publish`, `…/archive`, `…/preview` | `admin.products.publish/archive/preview` | ada |
+| GET/POST/PATCH | `/admin/articles?query=&status=`, `/admin/articles/{id}` | `admin.articles.list/get/create/update` | ada |
+| POST | `/admin/articles/{id}/publish`, `…/archive` | `admin.articles.publish/archive` | ada |
+| GET | `/admin/reports?from=&to=&product_type=&bank_name=` | `admin.reports.get` | ada |
+| GET | `/admin/reports/export.csv?…` (filter sama) | `admin.reports.exportCsv` → `{ filename, csv, rows }` | ada |
+| GET/PATCH | `/admin/configuration`, `/admin/configuration/{reminders\|upload}` | `admin.config.get/update(section)` | ada |
+| GET/POST | `/admin/health-config`, `…/preview`, `…/publish`, `…/rollback` | `admin.health.get/preview/publish/rollback` | ada |
+| GET | `/admin/audit-logs?resource_type=&from=&to=&query=` | `admin.audit.list` (super admin) | ada |
+
+### 28.3 Admin user row
+
+`GET /admin/users` → koleksi cursor (§4.2); mock mengembalikan array penuh. Akun `super_admin` tidak pernah ikut.
+
+```json
+{
+  "id": "usr_sample_02",
+  "name": "Budi Santoso",
+  "contact": "081200000102",
+  "contact_type": "phone",
+  "created_at": "2026-09-19T02:00:00.000Z",
+  "active_application_status": "additional_docs_requested",
+  "has_active_mortgage": false
+}
+```
+
+### 28.4 Application transition oleh admin
+
+Enum tetap §9.1. Body `{ to_status, reason, expected_version, metadata }`; isi `metadata` per tujuan ada di plan admin §4.3 dan §5. Response mengikuti §23 dengan `actor: "admin"` dan menambah `allowed_transitions`. Transition invalid → `INVALID_STATE_TRANSITION` tanpa mengubah state.
+
+Akad menyimpan `final_terms` `{ loan_amount, tenor_months, fixed_rate_bps, fixed_months, floating_rate_bps, akad_date, payment }`; `disbursed` membuat mortgage dari angka itu (tanggal mulai = `akad_date`). Catatan internal (`/notes`) tidak pernah muncul di endpoint B2C.
+
+### 28.4a Produk dan bank
+
+- Produk: `status: draft | published | archived`, `version` (dipin aplikasi lewat `selection.product_version`), `rev` (konkurensi edit admin; `expected_version` dicocokkan ke `rev`). Edit produk terbit tersimpan sebagai `pending_revision` dan baru berlaku setelah publish (`version + 1`).
+- Simpan draft/revisi tidak butuh `reason`; publish, archive, dan perubahan bank butuh `reason`.
+- Pencocokan B2C hanya membaca produk `published` dari bank `active`.
+
+### 28.4b Artikel
+
+- Shape B2C mengikuti mock (`src/data/articles.js`: `slug, tag, icon, title, summary, minutes, body: string[]`; contoh `education` di §19.1 masih bentuk lama); admin menambah `id`, `status: draft | published | archived`, `rev` (konkurensi; `expected_version` dicocokkan ke `rev`), dan `updated_at`.
+- `slug`: `^[a-z0-9]+(-[a-z0-9]+)*$`, unik termasuk artikel yang diarsipkan, dan tidak bisa diubah setelah terbit.
+- Simpan draft tidak butuh `reason`. Edit artikel terbit langsung tampil, jadi butuh `reason`; publish dan archive juga. Arsip bersifat final.
+- `explore.get`/`explore.article` hanya membaca yang `published`; artikel lain → `404 RESOURCE_NOT_FOUND`.
+
+### 28.4c Laporan
+
+- Satu respons berisi `filters` (default 30 hari terakhir), `banks`, `users { registered, with_application }`, `applications { created, submitted, approved, rejected, disbursed }`, `stages[] { status, count, conversion_bps, avg_days }`, dan `products[] { id, bank_name, product_name, product_type, count }`. Definisi tiap angka ada di plan admin §4.6.
+- Rentang tidak valid atau terbalik → `400 VALIDATION_FAILED` dengan `field_errors` `from`/`to`.
+- CSV: kolom whitelist tanpa data pribadi; sel yang diawali `= + - @` (atau tab/CR) diberi awalan `'`, lalu dikutip RFC 4180. Setiap ekspor menulis audit `report.export` berisi filter dan jumlah baris.
+
+### 28.4d Konfigurasi dan formula KPR Health
+
+- `GET /admin/configuration` → `{ config: { version, reminders, upload: { max_file_mb, formats } }, health: { version, published_at } }`. `PATCH` per bagian dengan `{ values, reason, expected_version }`. Pengingat default hanya berlaku untuk KPR yang diatur setelahnya.
+- Formula KPR Health berupa daftar versi yang hanya bisa ditambah; yang berlaku adalah versi terbaru. `preview { params }` tidak menyimpan apa pun dan mengembalikan skor sebelum/sesudah per contoh. `publish { params, reason, expected_version }` menambah versi. `rollback { to_version, reason, expected_version }` menerbitkan ulang params versi lama sebagai versi baru dengan `rollback_of`. `expected_version` = versi yang sedang berlaku.
+- Params: band `{ up_to, score }` dengan batas DTI/LTV dalam bps dan sisa fixed dalam hari, band terakhir `up_to: null`; `rate.floating`, `progress { base, per_paid }`, `weights { dti, ltv, rate, progress }`, `labels { healthy, attention }`.
+- `GET /dashboard` (snapshot) membawa `config { health { version, params }, reminders, upload }` untuk halaman B2C.
+
+### 28.5 Audit event
+
+```json
+{
+  "id": "aud_000001",
+  "actor": { "id": "usr_admin_01", "contact": "admin@ruangkpr.id" },
+  "action": "application.transition",
+  "resource": { "type": "application", "id": "app_sample_01" },
+  "reason": "Data awal sudah dicek",
+  "before": { "status": "submitted" },
+  "after": { "status": "docs_verification" },
+  "request_id": "req_000001",
+  "occurred_at": "2026-09-28T09:00:00.000Z"
+}
+```
+
+Nilai sensitif (NIK, nomor rekening, token) dimasking di `before`/`after`. Append-only; tidak ada endpoint ubah atau hapus. `GET /admin/audit-logs` mengembalikan event terbaru di atas; filter `resource_type`, rentang tanggal `occurred_at`, dan `query` (alasan, label resource, nama admin). Backend memakai cursor; mock mengembalikan semua.
+
+### 28.6 Akun di mock
+
+Satu browser menyimpan banyak akun di localStorage. Akun yang sedang login ada di top-level state, sehingga endpoint B2C tidak berubah; akun lain menunggu di `accounts` sampai kontaknya lolos OTP lagi. Mendaftar dengan kontak baru membuat akun baru, bukan menimpa akun lama. `auth.deleteAccount` hanya menghapus akun yang login. Seed menyertakan akun admin dan delapan user contoh fiktif. Backend nyata memisahkan data per user id.

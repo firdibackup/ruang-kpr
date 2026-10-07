@@ -296,12 +296,12 @@ function ProfileForm({ snap }) {
 
 // One form for the profile data Take Over reuses.
 // `required` lists the keys this form marks with *; each caller decides (the Home income pop-up asks only Penghasilan).
-export function PersonalFields({ form, clock, contactField, required = [] }) {
+export function PersonalFields({ form, clock, contactField, required = [], nikHint }) {
   const req = (k) => required.includes(k)
   return (
     <FormGrid>
       <TextField label="Nama sesuai KTP" required={req('fullName')} span {...form.bind('fullName')} />
-      <TextField label="NIK" required={req('nik')} inputMode="numeric" maxLength={16} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
+      <TextField label="NIK" required={req('nik')} inputMode="numeric" maxLength={16} hint={nikHint} {...form.bind('nik')} onChange={(x) => form.set('nik', x.replace(/\D/g, '').slice(0, 16))} />
       <TextField label="Tempat lahir" required={req('birthPlace')} {...form.bind('birthPlace')} />
       <DateField label="Tanggal lahir" required={req('birthDate')} max={clock} {...form.bind('birthDate')} />
       <RadioCards label="Jenis kelamin" required={req('gender')} options={GENDERS} {...form.bind('gender')} />

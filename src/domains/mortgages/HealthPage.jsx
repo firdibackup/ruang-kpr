@@ -13,7 +13,7 @@ import { PropertyDialog } from './MyKprTabs'
 import { progressGap } from './setupMeta'
 
 const BAR = { ok: 'bg-success-strong', warn: 'bg-warning-accent', bad: 'bg-brand-red' }
-const toneOf = (score) => (score >= 80 ? 'ok' : score >= 60 ? 'warn' : 'bad')
+const TEXT = { ok: 'text-success', warn: 'text-warning-text', bad: 'text-danger' }
 
 export function HealthPage() {
   const navigate = useNavigate()
@@ -22,7 +22,7 @@ export function HealthPage() {
   if (!data) return error ? <ErrorPanel onRetry={reload} /> : <PageSkeleton />
   const m = data.mortgages.find((x) => x.status === 'active')
   if (!m) return <Navigate to="/my-kpr" replace />
-  const d = deriveMortgage(m, data.clock)
+  const d = deriveMortgage(m, data.clock, data.config.health)
   // Locked until penghasilan is filled; Home asks for it.
   if (!(d.income > 0)) return <Navigate to="/" replace />
   const h = d.health
@@ -58,7 +58,7 @@ export function HealthPage() {
               <HealthRing health={h} size={96} />
               <div className="flex min-w-0 flex-col items-start gap-2">
                 <Chip tone={h.tone}>{h.label}</Chip>
-                <p className="text-[15px] leading-[22px] font-semibold text-ink-2">{h.score >= 80 ? 'Kondisi KPR kamu sehat.' : HEALTH_SENTENCE[weakest?.key]}</p>
+                <p className="text-[15px] leading-[22px] font-semibold text-ink-2">{h.tone === 'ok' ? 'Kondisi KPR kamu sehat.' : HEALTH_SENTENCE[weakest?.key]}</p>
               </div>
             </div>
           )}
@@ -68,7 +68,7 @@ export function HealthPage() {
                 <div className="flex items-center justify-between gap-3 text-[15px] font-extrabold">
                   <span>{c.name}</span>
                   {c.score !== null ? (
-                    <span className={c.score >= 80 ? 'text-success' : c.score >= 60 ? 'text-warning-text' : 'text-danger'}>{c.score}/100</span>
+                    <span className={TEXT[c.tone]}>{c.score}/100</span>
                   ) : complete[c.key].to ? (
                     <Button asChild variant="outline" size="sm">
                       <Link to={complete[c.key].to}>{complete[c.key].label}</Link>
@@ -79,12 +79,12 @@ export function HealthPage() {
                     </Button>
                   )}
                 </div>
-                {c.score !== null && <ProgressBar value={c.score} label={`${c.name} ${c.score} dari 100`} barClassName={BAR[toneOf(c.score)]} />}
+                {c.score !== null && <ProgressBar value={c.score} label={`${c.name} ${c.score} dari 100`} barClassName={BAR[c.tone]} />}
                 <span className="text-[13px] text-ink-3">{evidence[c.key]}</span>
               </li>
             ))}
           </ul>
-          <Disclaimer>Skor sementara = rata-rata komponen yang tersedia dengan ambang tetap (mis. rasio cicilan ≤30% = 90). Bobot final menunggu validasi produk.</Disclaimer>
+          <Disclaimer>Skor sementara dari komponen yang tersedia, dihitung dengan formula KPR Health versi {h.version}. Bobot final menunggu validasi produk.</Disclaimer>
         </Panel>
         <section className="flex flex-col gap-3.5 rounded-card border border-border bg-card p-7">
           <h2 className="text-[17px] font-extrabold">Yang perlu diperhatikan</h2>

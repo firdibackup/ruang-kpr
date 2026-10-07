@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-rout
 import { toast } from 'sonner'
 import { ArrowRightIcon, CircleCheckIcon, CircleIcon, CircleAlertIcon, PaperclipIcon, PencilIcon, RefreshCwIcon } from 'lucide-react'
 import { api } from '@/data/api'
+import { uploadHint } from '@/data/documentRules'
 import { addDays, daysUntil } from '@/calculations/dates'
 import { useForm } from '@/lib/hooks'
 import { CERTIFICATES, CITIES, PROPERTY_TYPES, dateLong, dateShort, daysLabel, intInput, labelOf, moneyInput, monthName, monthYear, percentBps, percentRatio, rupiah, signedRupiah, tenorLabel, toInt, toMoney } from '@/lib/format'
@@ -161,15 +162,15 @@ export function PaymentTab() {
         {!m.payments.length && <p className="text-[13px] text-muted-foreground">Belum ada pembayaran yang ditandai.</p>}
         <Disclaimer>Status pembayaran kamu catat sendiri (user-recorded) dan tidak tersinkron dengan bank.</Disclaimer>
       </Panel>
-      {marking && <MarkPaidDialog onOpenChange={() => setMarking(null)} m={m} dueOptions={d.payableDues} initialDue={marking} clock={snap.clock} onDone={reload} />}
+      {marking && <MarkPaidDialog onOpenChange={() => setMarking(null)} m={m} dueOptions={d.payableDues} initialDue={marking} clock={snap.clock} onDone={reload} uploadRules={snap.config.upload} />}
     </div>
   )
 }
 
-const PROOF_DOC = { label: 'Bukti pembayaran', required: false, hint: 'Foto atau PDF bukti transfer, maks. 5MB.' }
+const PROOF_DOC = { label: 'Bukti pembayaran', required: false }
 
 // Shared by the Payment tab and the Home dashboard so marking a payment is one tap from either.
-export function MarkPaidDialog({ onOpenChange, m, dueOptions, initialDue, clock, onDone }) {
+export function MarkPaidDialog({ onOpenChange, m, dueOptions, initialDue, clock, onDone, uploadRules }) {
   const [dueDate, setDueDate] = useState(initialDue ?? dueOptions[0] ?? '')
   const [amount, setAmount] = useState(String(m.currentPayment))
   const [paidAt, setPaidAt] = useState(clock)
@@ -198,7 +199,7 @@ export function MarkPaidDialog({ onOpenChange, m, dueOptions, initialDue, clock,
         <SelectField label="Jatuh tempo" value={dueDate} onChange={setDueDate} options={dueOptions.map((x) => ({ value: x, label: dateLong(x) }))} />
         <MoneyField label="Nominal dibayar" value={amount} onChange={setAmount} />
         <DateField label="Tanggal bayar" value={paidAt} onChange={setPaidAt} max={clock} />
-        <UploadRow compact doc={PROOF_DOC} state={proof && { status: 'uploaded', fileName: proof.name }} onUpload={async (file) => setProof(file)} />
+        <UploadRow compact doc={{ ...PROOF_DOC, hint: `Bukti transfer: ${uploadHint(uploadRules)}.` }} rules={uploadRules} state={proof && { status: 'uploaded', fileName: proof.name }} onUpload={async (file) => setProof(file)} />
         {error && <p role="alert" className="text-[13px] font-semibold text-danger">{error}</p>}
         <Button type="submit" size="md" disabled={pending || !dueDate} aria-busy={pending}>
           {pending && <Spinner />}
