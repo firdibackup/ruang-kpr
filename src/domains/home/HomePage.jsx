@@ -295,7 +295,7 @@ function FreshProducts() {
       </div>
       <ul
         data-tour="products"
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
         aria-label="Produk KPR"
       >
         {products.map((p) => (

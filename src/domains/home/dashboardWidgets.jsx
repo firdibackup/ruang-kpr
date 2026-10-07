@@ -104,7 +104,7 @@ export function LockedPreview({ preview, title, children, action }) {
         }
         title={title}
         action={action}
-        className="justify-center bg-card/60 p-5 backdrop-blur-[2px] sm:p-6"
+        className="justify-center bg-card/60 p-5 backdrop-blur-[1px] sm:p-6"
       >
         <span className={SHORT_HIDDEN}>{children}</span>
       </EmptyState>
