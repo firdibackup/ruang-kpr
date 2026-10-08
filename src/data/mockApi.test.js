@@ -410,8 +410,8 @@ describe('primary application', () => {
     expect(await api.bankProducts.affordability({ applicationId: app.id })).toMatchObject({ openCount: 3, capacity: { remainingCapacity: 3_750_000 } })
     await expectCode(api.applications.submit(app.id, { consents: { dataAccuracy: true, sendToBank: true } }), 'DOCUMENTS_INCOMPLETE')
     for (const t of ['ktp', 'npwp', 'income_proof', 'property_document']) await api.applications.uploadDocument(app.id, { documentType: t, file: file(`${t}.jpg`) })
-    await expectCode(api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.exe') }), 'FILE_TYPE_UNSUPPORTED')
-    await expectCode(api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.pdf', 6 * 1024 * 1024) }), 'FILE_TOO_LARGE')
+    // File rules are temporarily off (ENFORCE_FILE_RULES): any type/size is accepted.
+    expect((await api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.heic', 6 * 1024 * 1024) })).documents.additional.status).toBe('uploaded')
     const compare = await api.bankProducts.compare({ applicationId: app.id })
     expect(JSON.stringify(compare)).not.toMatch(/secondary/i)
     const chosen = compare.items[0]
