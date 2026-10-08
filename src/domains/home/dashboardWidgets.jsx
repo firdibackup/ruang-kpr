@@ -33,6 +33,7 @@ import {
   Disclaimer,
   EmptyState,
   IconBox,
+  InfoTip,
   Notice,
   Panel,
   ProgressBar,
@@ -53,6 +54,22 @@ export const HEALTH_SENTENCE = {
   rate: "Masa fixed segera berakhir.",
   progress: "Pokok yang sudah lunas masih sedikit.",
 };
+// What KPR Health is, behind its ⓘ on Home and on the Health page.
+export const HEALTH_ABOUT =
+  "KPR Health menilai kondisi KPR kamu dari 0–100: aman, perlu diperhatikan, atau berisiko. Skornya rata-rata dari 4 komponen: beban cicilan, nilai properti, risiko bunga, dan progres pinjaman. Bukan skor kredit bank, bukan keputusan persetujuan KPR, dan bukan hasil AI: dihitung dengan rumus tetap dari data yang kamu isi.";
+const HEALTH_MISSING = {
+  dti: "penghasilan",
+  ltv: "estimasi nilai properti",
+  rate: "jenis bunga",
+  progress: "data pokok pinjaman",
+};
+// Names the data a partial score still waits for, never a generic "some components".
+export const healthMissing = (health) =>
+  new Intl.ListFormat("id").format(
+    health.components
+      .filter((c) => c.score === null)
+      .map((c) => HEALTH_MISSING[c.key]),
+  );
 const TONE_COLOR = { ok: "#1B8A5A", warn: "#E0A100", bad: "#DC1C2E" };
 
 export function HealthRing({ health, size = 112 }) {
@@ -358,8 +375,9 @@ function HealthWidget({ d, onAskIncome }) {
         size={d.mode === "normal" ? "7em" : "5.75em"}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-[13px] font-extrabold text-ink-3">
+        <span className="flex items-center gap-1.5 text-[13px] font-extrabold text-ink-3">
           KPR Health
+          <InfoTip label="Tentang KPR Health">{HEALTH_ABOUT}</InfoTip>
         </span>
         <Chip tone={health.tone}>{health.label}</Chip>
         <p className="text-sm leading-[21px] text-ink-2 [@container(max-height:14rem)]:hidden">
@@ -369,7 +387,7 @@ function HealthWidget({ d, onAskIncome }) {
         </p>
         {health.partial && (
           <p className="text-xs text-warning-text">
-            Skor parsial — sebagian komponen belum dapat dihitung.
+            Skor sementara — lengkapi {healthMissing(health)}.
           </p>
         )}
         <Link

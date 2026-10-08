@@ -1,5 +1,6 @@
 // Visual patterns copied from the approved artifact (cards, chips, summary rows, hero, notices).
-import { Progress as ProgressPrimitive } from 'radix-ui'
+import { useRef, useState } from 'react'
+import { Popover, Progress as ProgressPrimitive } from 'radix-ui'
 import { CircleAlertIcon, CircleCheckIcon, CloudOffIcon, InfoIcon, LoaderCircleIcon, TriangleAlertIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -228,6 +229,49 @@ export function EmptyState({ icon: Icon, media, title, children, action, classNa
       {children && <div className="max-w-sm text-sm leading-[21px] text-muted-foreground">{children}</div>}
       {action}
     </div>
+  )
+}
+
+// Small ⓘ that explains a figure: hover opens it with a mouse, tap/click or Enter elsewhere (phones have no hover).
+// The 16px icon keeps a 44px hit area through its ::after, so it sits inline without growing the row.
+export function InfoTip({ label, children, className }) {
+  const [open, setOpen] = useState(false)
+  const timer = useRef()
+  const mouse = useRef(false)
+  const hover = (next) => (e) => {
+    if (e.pointerType !== 'mouse') return
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setOpen(next), next ? 0 : 150)
+  }
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        aria-label={label}
+        onPointerEnter={hover(true)}
+        onPointerLeave={hover(false)}
+        onPointerDown={(e) => (mouse.current = e.pointerType === 'mouse')}
+        // A mouse click on a tip hover already opened keeps it open instead of toggling it shut.
+        onClick={(e) => e.detail && mouse.current && open && e.preventDefault()}
+        className={cn('relative inline-flex size-4 shrink-0 items-center justify-center rounded-full text-ink-3 after:absolute after:-inset-3.5 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary', className)}
+      >
+        <InfoIcon className="size-4" aria-hidden />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={8}
+          collisionPadding={16}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onPointerEnter={hover(true)}
+          onPointerLeave={hover(false)}
+          className="z-50 w-[min(340px,calc(100vw-32px))] rounded-2xl border border-border bg-card p-4 text-[13px] leading-5 font-medium text-ink-2 shadow-card"
+        >
+          {children}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }
 

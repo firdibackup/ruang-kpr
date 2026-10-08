@@ -103,6 +103,14 @@ test('monitoring: 2-step setup (Data KPR → Reminder) → locked widgets unlock
   await expect(page.getByText(/Lengkapi nilai properti untuk melihat potensi/)).toBeVisible()
   // KPR Health opens the same pop-up from the row's corner, without leaving the page.
   await page.goto('/my-kpr/health')
+  // The ⓘ says what KPR Health is (and is not); each component shows its bands with the user's own marked.
+  await page.getByRole('button', { name: 'Tentang KPR Health' }).click()
+  await expect(page.getByRole('dialog').getByText(/Bukan skor kredit bank/)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Cara menghitung Beban cicilan' }).click()
+  await expect(page.getByRole('dialog').getByText(/· kamu$/)).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByText(/Skor sementara — lengkapi estimasi nilai properti/)).toBeVisible()
   await page.getByRole('button', { name: 'Isi nilai properti' }).click()
   await expect(page.getByRole('dialog', { name: 'Data properti' })).toBeVisible()
   await expect(page).toHaveURL(/my-kpr\/health$/)

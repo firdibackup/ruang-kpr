@@ -99,29 +99,38 @@ const PRIMARY_STAGES = [
   {
     label: "Verifikasi",
     statuses: ["docs_verification", "additional_docs_requested"],
-    eta: "± 3–7 hari kerja",
+    eta: "± 3–7 hari",
   },
   {
     label: "Proses Bank",
     statuses: ["bank_processing"],
-    eta: "± 7–30 hari kerja",
+    eta: "± 7–30 hari",
   },
-  { label: "Appraisal", statuses: ["appraisal"], eta: "± 3–7 hari kerja" },
-  { label: "Disetujui", statuses: ["approved"], eta: "± 3–7 hari kerja" },
+  { label: "Appraisal", statuses: ["appraisal"], eta: "± 3–7 hari" },
+  { label: "Disetujui", statuses: ["approved"], eta: "± 3–7 hari" },
   { label: "Akad", statuses: ["akad", "disbursed"], eta: "± 3–5 hari" },
 ];
 const TAKEOVER_STAGES = [
-  { label: "Diajukan", statuses: ["submitted"] },
+  { label: "Diajukan", statuses: ["submitted"], eta: "± 1–3 hari" },
   {
     label: "Verifikasi Dokumen",
     statuses: ["docs_verification", "additional_docs_requested"],
+    eta: "± 3–7 hari",
   },
-  { label: "Proses Bank", statuses: ["bank_processing"] },
-  { label: "Appraisal", statuses: ["appraisal"] },
-  { label: "Disetujui", statuses: ["approved"] },
-  { label: "Pelunasan KPR Lama", statuses: ["old_mortgage_settlement"] },
-  { label: "Akad KPR Baru", statuses: ["akad"] },
-  { label: "Selesai", statuses: ["disbursed"] },
+  {
+    label: "Proses Bank",
+    statuses: ["bank_processing"],
+    eta: "± 7–30 hari",
+  },
+  { label: "Appraisal", statuses: ["appraisal"], eta: "± 3–7 hari" },
+  { label: "Disetujui", statuses: ["approved"], eta: "± 3–7 hari" },
+  {
+    label: "Pelunasan KPR Lama",
+    statuses: ["old_mortgage_settlement"],
+    eta: "± 3–10 hari",
+  },
+  { label: "Akad KPR Baru", statuses: ["akad"], eta: "± 3–5 hari" },
+  { label: "Selesai", statuses: ["disbursed"], eta: "± 1–3 hari" },
 ];
 
 // Tracker reflects the stored status history — never a local timer.
