@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import { ActivityIcon, ArrowLeftIcon, BellIcon, CompassIcon, HouseIcon, LandmarkIcon, UserRoundIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/data/api'
 import { useSession } from '@/domains/session/SessionProvider'
 import { firstName, initials } from '@/lib/format'
+import { useRouteFocus } from '@/lib/hooks'
 
 const NAV = [
   { to: '/', label: 'Home', icon: HouseIcon, match: (p) => p === '/' || p.startsWith('/monitoring') },
@@ -14,7 +15,7 @@ const NAV = [
   { to: '/profile', label: 'Profile', icon: UserRoundIcon, match: (p) => p.startsWith('/profile') },
 ]
 
-export function Brand({ compact = false }) {
+export function Brand({ compact = false, tagline = 'Command Center' }) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-lg font-extrabold text-white" aria-hidden>
@@ -22,7 +23,7 @@ export function Brand({ compact = false }) {
       </span>
       <span className="flex flex-col leading-tight">
         <span className={cn('font-extrabold', compact ? 'text-base' : 'text-[17px]')}>RuangKPR</span>
-        <span className="text-[11px] font-semibold tracking-[0.4px] text-brand-red">Command Center</span>
+        <span className="text-[11px] font-semibold tracking-[0.4px] text-brand-red">{tagline}</span>
       </span>
     </div>
   )
@@ -34,7 +35,7 @@ const unreadLabel = (n) => (n > 9 ? '9+' : String(n))
 export function AppShell() {
   const { pathname } = useLocation()
   const [unread, setUnread] = useState(0)
-  const firstRender = useRef(true)
+  useRouteFocus(pathname)
 
   useEffect(() => {
     let alive = true
@@ -42,10 +43,6 @@ export function AppShell() {
       .getSnapshot()
       .then((s) => alive && setUnread(s.unreadActivities))
       .catch(() => {})
-    window.scrollTo(0, 0)
-    // Move focus to the new page for keyboard/screen-reader users (not on first load).
-    if (!firstRender.current) document.getElementById('main')?.focus({ preventScroll: true })
-    firstRender.current = false
     return () => {
       alive = false
     }

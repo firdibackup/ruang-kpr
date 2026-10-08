@@ -13,6 +13,8 @@ const FAILABLE = [
   ['bankProducts.compare', 'Daftar program bank'],
   ['dashboard.getSnapshot', 'Muat dashboard'],
   ['mortgages.activate', 'Aktivasi pemantauan'],
+  ['admin.overview.get', 'Ringkasan admin'],
+  ['admin.reports.get', 'Laporan admin'],
 ]
 
 export function DevPanel() {

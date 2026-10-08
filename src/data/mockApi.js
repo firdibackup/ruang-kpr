@@ -1,18 +1,22 @@
 // Mock implementation of the API contract (doc 04). Async like a real backend, persists through mockDb,
 // throws ApiError for expected failures. Financial math comes from src/calculations — never inline here.
-import { addMonths, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
+import { addDays, addMonths, daysUntil, nextDueDate, parseIsoDate } from '@/calculations/dates'
 import { CalculationError, calculateMaxPrincipal } from '@/calculations/finance'
-import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
+import { comparePrimaryPrograms, compareTakeoverPrograms, evaluateTakeoverProduct, isAvailable, isStale, primaryAffordability, simulateLoan, takeoverBaseline } from '@/calculations/programs'
 import { normalizeLayout } from '@/domains/home/dashboardLayout'
 import { IN_PROCESS, activeApplication } from '@/domains/home/selectHomeState'
-import { nextMilestone, rateMode } from '@/domains/mortgages/derive'
-import { defaultTakeoverGoal, takeoverDataFromMortgage, takeoverGaps } from '@/domains/optimize/validation'
+import { FIXED_MILESTONES, HEALTH_V1, deriveMortgage, nextMilestone, rateMode } from '@/domains/mortgages/derive'
+import { defaultTakeoverGoal, takeoverDataFromMortgage, takeoverGaps, validateEmploymentBasic } from '@/domains/optimize/validation'
+import { validatePersonal } from '@/domains/applications/validation'
+import { filledOnly, validateReminders } from '@/domains/mortgages/validation'
+import { maskNik } from '@/lib/format'
 import { ApiError } from './apiError'
 import { ARTICLES } from './articles'
 import { BANK_PRODUCTS } from './catalog'
-import { ACCEPTED_EXTENSIONS, DOC_LABELS, ENFORCE_FILE_RULES, MAX_FILE_BYTES, requiredDocuments } from './documentRules'
+import { DEFAULT_UPLOAD, DOC_LABELS, UPLOAD_FORMATS, requiredDocuments, uploadProblem } from './documentRules'
 import { loadDb, resetDb, saveDb } from './mockDb'
-import { DEFAULT_REMINDERS, SCENARIOS, createSeed } from './seed'
+import { ACCOUNT_KEYS, DEFAULT_REMINDERS, SCENARIOS, createSeed, newAccount, pickAccount, staffAccount } from './seed'
+import { STAFF, canOpen } from './roles'
 import { TOURS } from './tours'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -28,8 +32,6 @@ const OTP_WRONG = '000000'
 const OTP_EXPIRED = '999999'
 const OTP_COOLDOWN_MS = 60_000
 
-const PRIMARY_FLOW = ['submitted', 'docs_verification', 'bank_processing', 'appraisal', 'approved', 'akad', 'disbursed']
-const TAKEOVER_FLOW = ['submitted', 'docs_verification', 'bank_processing', 'appraisal', 'approved', 'old_mortgage_settlement', 'akad', 'disbursed']
 const CANCELLABLE = ['draft', 'submitted', 'docs_verification', 'additional_docs_requested', 'bank_processing', 'appraisal']
 
 const STATUS_COPY = {
@@ -44,10 +46,18 @@ const STATUS_COPY = {
 
 // ---------- dev-only failure injection (doc 04 §22.4) ----------
 const failures = new Map()
-function maybeFail(name) {
+let callSeq = 0 // numbers every adapter call when it starts
+// An armed failure fails every call already in flight when it first fires, then disarms on the next one.
+// StrictMode mounts every load effect twice in dev and keeps only the second result, so both must fail;
+// a single click, or a retry started afterwards, still sees exactly one failure.
+function maybeFail(name, seq) {
   const f = failures.get(name)
   if (!f) return
-  failures.delete(name)
+  if (f.firedUpTo !== undefined && seq > f.firedUpTo) {
+    failures.delete(name)
+    return
+  }
+  f.firedUpTo ??= callSeq
   fail(f.code, f.message, f.status, { retryable: f.retryable })
 }
 
@@ -63,13 +73,29 @@ function maskContact(contact, type) {
   return `+62 ${d.slice(0, 3)} **** ${d.slice(-4)}`
 }
 
-function productsOf(db) {
-  const stale = db.flags?.staleProducts ?? {}
-  return BANK_PRODUCTS.map((p) => (stale[p.id] ? { ...p, lastVerifiedAt: stale[p.id] } : p))
+// Catalog the admin manages (admin plan §4.4). Until the first admin change it is the seeded BANK_PRODUCTS, so
+// stored demo data needs no reset; the first write copies it into db.products / db.banks.
+const catalogOf = (db) => db.products ?? BANK_PRODUCTS
+const banksFrom = (products) => [...new Map(products.map((p) => [p.bank.id, { ...p.bank, active: true, version: 1 }])).values()]
+const banksOf = (db) => db.banks ?? banksFrom(catalogOf(db))
+function editableCatalog(db) {
+  db.products ??= structuredClone(BANK_PRODUCTS)
+  db.banks ??= banksFrom(db.products)
 }
 
-function pushActivity(db, { type, category, title, body, action = null }) {
-  db.activities.unshift({ id: nextId(db, 'act'), type, category, title, body, occurredAt: nowIso(db), readAt: null, action })
+// What B2C matching sees: published products of active banks, without unpublished revisions
+// (the stale_catalog demo flag ages lastVerifiedAt).
+function productsOf(db) {
+  const stale = db.flags?.staleProducts ?? {}
+  const off = new Set(banksOf(db).filter((b) => !b.active).map((b) => b.id))
+  return catalogOf(db)
+    .filter((p) => p.status === 'published' && !off.has(p.bank.id))
+    .map(({ pendingRevision: _draft, rev: _rev, ...p }) => (stale[p.id] ? { ...p, lastVerifiedAt: stale[p.id] } : p))
+}
+
+// `owner` is the account the event belongs to: the signed-in user by default, a stored account for admin moves.
+function pushActivity(db, { type, category, title, body, action = null }, owner = db) {
+  owner.activities.unshift({ id: nextId(db, 'act'), type, category, title, body, occurredAt: nowIso(db), readAt: null, action })
 }
 
 // null until the user customises the Home board; until then the board follows the default for their data.
@@ -93,6 +119,95 @@ function findMortgage(db, id) {
 }
 
 const activeMortgageOf = (db) => db.mortgages.find((m) => m.status === 'active') ?? null
+
+// Verifying a contact signs into that contact's account. The signed-in account's data sits at the top level of
+// db, so B2C operations never change; every other account waits in db.accounts.
+function switchAccount(db, contact) {
+  if (db.user?.contact === contact) return
+  if (db.user) db.accounts.push(pickAccount(db))
+  const i = db.accounts.findIndex((a) => a.user.contact === contact)
+  const next = i < 0 ? (staffAccount(contact) ?? newAccount()) : db.accounts.splice(i, 1)[0]
+  ACCOUNT_KEYS.forEach((k) => delete db[k])
+  Object.assign(db, next)
+}
+
+// Admin operations run as the signed-in staff member, so every user account in this browser waits in db.accounts.
+const userAccounts = (db) => db.accounts.filter((a) => !STAFF[a.user.role])
+
+function findAccount(db, id) {
+  const a = userAccounts(db).find((x) => x.user.id === id)
+  if (!a) fail('RESOURCE_NOT_FOUND', 'User tidak ditemukan.', 404)
+  return a
+}
+
+// Every admin mutation: a written reason, the version the admin saw, then one audit event (admin plan §6).
+function requireReason(reason) {
+  const message = 'Isi alasan perubahan (minimal 5 karakter).'
+  if (String(reason ?? '').trim().length < 5) fail('VALIDATION_FAILED', message, 400, { fieldErrors: [{ field: 'reason', message }] })
+}
+function checkVersion(entity, expectedVersion) {
+  if (expectedVersion !== (entity.version ?? 1)) fail('CONFLICT_VERSION', 'Data ini sudah diubah sejak kamu buka. Muat ulang lalu ulangi.', 409, { retryable: true })
+}
+const bumpVersion = (entity) => {
+  entity.version = (entity.version ?? 1) + 1
+}
+// Only the fields that changed, before and after; null when nothing changed.
+function changes(before = {}, after = {}, keys) {
+  const k = keys.filter((x) => JSON.stringify(before[x] ?? null) !== JSON.stringify(after[x] ?? null))
+  return k.length ? { before: Object.fromEntries(k.map((x) => [x, before[x] ?? null])), after: Object.fromEntries(k.map((x) => [x, after[x] ?? null])) } : null
+}
+const maskSensitive = (o) => o && Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'nik' && v ? maskNik(v) : v]))
+function audit(db, { action, resource, reason = null, before = null, after = null }) {
+  ;(db.auditLog ??= []).unshift({
+    id: nextId(db, 'aud'),
+    actor: { id: db.user.id, name: db.user.name, contact: db.user.contact },
+    action,
+    resource,
+    reason: reason?.trim() ?? null,
+    before: maskSensitive(before),
+    after: maskSensitive(after),
+    requestId: nextId(db, 'req'),
+    occurredAt: nowIso(db),
+  })
+}
+const failOnFields = (errors, message) => {
+  const fieldErrors = Object.entries(errors).map(([field, msg]) => ({ field, message: msg }))
+  if (fieldErrors.length) fail('VALIDATION_FAILED', message, 400, { fieldErrors })
+}
+
+// One source: KPR Health reads the mortgage copy, so profile finance and draft/active mortgages move together.
+function applyFinance(owner, finance) {
+  owner.finance = { ...owner.finance, ...finance }
+  for (const m of owner.mortgages) if (m.status === 'draft' || m.status === 'active') m.finance = { ...m.finance, ...finance }
+}
+
+const PROFILE_FIELDS = ['fullName', 'nik', 'birthPlace', 'birthDate', 'gender', 'maritalStatus', 'address', 'phone', 'email', 'occupation', 'companyName', 'jobTitle', 'workYears', 'workMonths']
+const FINANCE_FIELDS = ['monthlyIncome', 'jointIncome', 'partnerIncome', 'vehicleDebt', 'cardDebt', 'otherDebt']
+const pickFields = (values, keys) => Object.fromEntries(Object.entries(values ?? {}).filter(([k]) => keys.includes(k)))
+
+function userDetail(db, a) {
+  const { nik, ...profile } = a.profile ?? {}
+  return {
+    asOf: db.clock,
+    user: { id: a.user.id, name: a.user.name, contact: a.user.contact, contactType: a.user.contactType, createdAt: a.user.createdAt, version: a.user.version ?? 1 },
+    profile: { ...profile, nikMasked: nik ? maskNik(nik) : null },
+    finance: a.finance ?? {},
+    applications: a.applications.map((app) => ({ id: app.id, productType: app.productType, optimizationMode: app.optimizationMode, status: app.status, bankName: app.selection?.bankName ?? null, productName: app.selection?.productName ?? null, submittedAt: app.submittedAt, updatedAt: app.updatedAt })),
+    mortgages: a.mortgages.map((m) => ({ id: m.id, status: m.status, bankName: m.bankName, productName: m.productName, outstandingPrincipal: m.outstandingPrincipal, currentPayment: m.currentPayment, currentRateType: m.currentRateType, currentRateBps: m.currentRateBps, fixedUntil: m.fixedUntil })),
+    audit: (db.auditLog ?? []).filter((e) => e.resource.type === 'user' && e.resource.id === a.user.id).slice(0, 10),
+  }
+}
+
+const userRow = ({ user, applications, mortgages }) => ({
+  id: user.id,
+  name: user.name,
+  contact: user.contact,
+  contactType: user.contactType,
+  createdAt: user.createdAt,
+  activeApplicationStatus: activeApplication(applications)?.status ?? null,
+  hasActiveMortgage: mortgages.some((m) => m.status === 'active'),
+})
+
 const touch = (db, entity) => {
   entity.version = (entity.version ?? 0) + 1
   entity.updatedAt = nowIso(db)
@@ -219,9 +334,11 @@ function newApplication(db, { productType, mode = null, source = 'cold', mortgag
   return decorate(app)
 }
 
-function mortgageFromApplication(db, app, base = {}) {
-  const s = app.selection
-  const start = db.clock
+// From the akad's final terms when the team recorded them (doc 04 §9.1), else from the chosen program.
+function mortgageFromApplication(db, app, base = {}, owner = db) {
+  const ft = app.finalTerms
+  const s = ft ? { ...app.selection, loanAmount: ft.loanAmount, tenorMonths: ft.tenorMonths, fixedRateBps: ft.fixedRateBps, fixedMonths: ft.fixedMonths, floatingRateBps: ft.floatingRateBps, estimatedPayment: ft.payment } : app.selection
+  const start = ft?.akadDate ?? db.clock
   const dueDay = parseIsoDate(start).day
   const d = app.data
   const e = d.employment ?? {}
@@ -264,7 +381,7 @@ function mortgageFromApplication(db, app, base = {}) {
       valueLater: false,
     },
     finance: base.finance ?? {
-      monthlyIncome: e.monthlyIncome ?? db.finance?.monthlyIncome ?? null,
+      monthlyIncome: e.monthlyIncome ?? owner.finance?.monthlyIncome ?? null,
       jointIncome: e.jointIncome ?? false,
       partnerIncome: e.partnerIncome ?? null,
       vehicleDebt: e.vehicleDebt ?? f.vehicleDebt ?? 0,
@@ -273,7 +390,7 @@ function mortgageFromApplication(db, app, base = {}) {
       routineExpenses: null,
       emergencyFund: null,
     },
-    reminders: base.reminders ?? structuredClone(DEFAULT_REMINDERS),
+    reminders: base.reminders ?? structuredClone(configOf(db).reminders),
     payments: [],
     version: 1,
     activatedAt: nowIso(db),
@@ -281,20 +398,90 @@ function mortgageFromApplication(db, app, base = {}) {
 }
 
 // Disbursement converts final akad terms into an active mortgage (doc 04 §23), never simulation values.
-function completeApplication(db, app) {
+function completeApplication(db, app, owner = db) {
   if (app.productType === 'takeover') {
-    const old = app.mortgageId ? db.mortgages.find((m) => m.id === app.mortgageId) : activeMortgageOf(db)
+    const old = app.mortgageId ? owner.mortgages.find((m) => m.id === app.mortgageId) : activeMortgageOf(owner)
     if (old) old.status = 'replaced'
-    db.mortgages.unshift(mortgageFromApplication(db, app, old ? { property: old.property, finance: old.finance, reminders: old.reminders } : {}))
-    pushActivity(db, { type: 'application_completed', category: 'application', title: 'Take Over selesai', body: `KPR baru di ${app.selection.bankName} aktif. Pemantauan memakai data final akad.`, action: { label: 'Lihat KPR', route: '/my-kpr/overview' } })
+    owner.mortgages.unshift(mortgageFromApplication(db, app, old ? { property: old.property, finance: old.finance, reminders: old.reminders } : {}, owner))
+    pushActivity(db, { type: 'application_completed', category: 'application', title: 'Take Over selesai', body: `KPR baru di ${app.selection.bankName} aktif. Pemantauan memakai data final akad.`, action: { label: 'Lihat KPR', route: '/my-kpr/overview' } }, owner)
     return
   }
-  if (activeMortgageOf(db)) {
-    pushActivity(db, { type: 'application_completed', category: 'application', title: 'Pengajuan selesai', body: 'KPR baru belum dipantau otomatis karena MVP mendukung satu KPR aktif per akun.' })
+  if (activeMortgageOf(owner)) {
+    pushActivity(db, { type: 'application_completed', category: 'application', title: 'Pengajuan selesai', body: 'KPR baru belum dipantau otomatis karena MVP mendukung satu KPR aktif per akun.' }, owner)
     return
   }
-  db.mortgages.unshift(mortgageFromApplication(db, app))
-  pushActivity(db, { type: 'application_completed', category: 'application', title: 'KPR kamu sudah aktif', body: `${app.selection.bankName} · ${app.selection.productName}. Reminder pembayaran otomatis aktif.`, action: { label: 'Lihat KPR', route: '/my-kpr/overview' } })
+  owner.mortgages.unshift(mortgageFromApplication(db, app, {}, owner))
+  pushActivity(db, { type: 'application_completed', category: 'application', title: 'KPR kamu sudah aktif', body: `${app.selection.bankName} · ${app.selection.productName}. Reminder pembayaran otomatis aktif.`, action: { label: 'Lihat KPR', route: '/my-kpr/overview' } }, owner)
+}
+
+// Status matrix shared by the admin and the dev shortcuts (admin plan §4.3, doc 04 §9.1).
+// additional_docs_requested waits on the user's re-upload, which returns it to docs_verification.
+const NEXT_STATUS = {
+  submitted: ['docs_verification'],
+  docs_verification: ['additional_docs_requested', 'bank_processing'],
+  bank_processing: ['appraisal', 'rejected'],
+  appraisal: ['approved', 'rejected'],
+  old_mortgage_settlement: ['akad'],
+  akad: ['disbursed'],
+}
+const allowedTransitions = (app) => (app.status === 'approved' ? [app.productType === 'takeover' ? 'old_mortgage_settlement' : 'akad'] : (NEXT_STATUS[app.status] ?? []))
+
+// Open question (admin plan §12 Q3): only the DTI code is confirmed; relevantStep is the step a retry reopens.
+const REJECTION_CODES = {
+  DTI_ABOVE_BANK_POLICY: { label: 'Rasio cicilan melebihi batas bank', relevantStep: { primary: 2, takeover: 3 } },
+  BANK_POLICY_OTHER: { label: 'Kebijakan bank lainnya', relevantStep: {} },
+}
+
+// Final akad terms (proposed set, admin plan §12 Q1). The installment comes from the same engine as the simulation.
+function finalTermsOf(ft = {}) {
+  const int = (v, min, max) => Number.isInteger(v) && v >= min && v <= max
+  const e = {}
+  if (!int(ft.loanAmount, 1, Number.MAX_SAFE_INTEGER)) e.loanAmount = 'Isi plafon final.'
+  if (!int(ft.tenorMonths, 12, 360)) e.tenorMonths = 'Tenor 12–360 bulan.'
+  if (!int(ft.fixedRateBps, 1, 3000)) e.fixedRateBps = 'Isi bunga fixed 0,01–30%.'
+  if (!int(ft.fixedMonths, 1, ft.tenorMonths ?? 0)) e.fixedMonths = 'Masa fixed 1 bulan sampai tenor.'
+  if (!int(ft.floatingRateBps, 1, 3000)) e.floatingRateBps = 'Isi estimasi bunga floating 0,01–30%.'
+  if (!parseIsoDate(ft.akadDate)) e.akadDate = 'Pilih tanggal akad.'
+  failOnFields(e, 'Lengkapi angka final akad.')
+  const ratePeriods = [
+    { type: 'fixed', durationMonths: ft.fixedMonths, rateBps: ft.fixedRateBps },
+    { type: 'floating', durationMonths: null, rateBps: ft.floatingRateBps, estimated: true },
+  ]
+  const { payment } = simulateLoan({ product: { ratePeriods }, principal: ft.loanAmount, termMonths: ft.tenorMonths })
+  return { loanAmount: ft.loanAmount, tenorMonths: ft.tenorMonths, fixedRateBps: ft.fixedRateBps, fixedMonths: ft.fixedMonths, floatingRateBps: ft.floatingRateBps, akadDate: ft.akadDate, payment }
+}
+
+// One status move with every side effect the user sees: documents, pending actions, rejection, activity, and the
+// active KPR on disbursement. The caller checks the reason/version and writes the audit event.
+function transitionApplication(db, owner, app, { toStatus, metadata = {} }) {
+  if (!allowedTransitions(app).includes(toStatus)) fail('INVALID_STATE_TRANSITION', 'Pengajuan pada tahap ini tidak bisa dipindah ke status tersebut.', 409)
+  if (toStatus === 'bank_processing' && app.pendingActions.length) fail('INVALID_STATE_TRANSITION', 'Masih ada dokumen yang menunggu diunggah ulang user.', 409)
+  const at = nowIso(db)
+  if (toStatus === 'additional_docs_requested') {
+    const types = [...new Set(metadata.documentTypes ?? [])].filter((t) => DOC_LABELS[t])
+    const message = String(metadata.message ?? '').trim()
+    failOnFields({ ...(!types.length && { documentTypes: 'Pilih minimal satu dokumen.' }), ...(message.length < 5 && { message: 'Tulis pesan untuk user (minimal 5 karakter).' }) }, 'Lengkapi permintaan revisi dokumen.')
+    for (const t of types) {
+      app.documents[t] = { ...app.documents[t], status: 'needs_update', invalidReason: message }
+      app.pendingActions.push({ id: nextId(db, 'pa'), type: 'document_update', documentType: t, message, requestedAt: at })
+    }
+    pushActivity(db, { type: 'additional_document_requested', category: 'application', title: 'Dokumen perlu diperbarui', body: message, action: { label: 'Upload sekarang', route: '/my-kpr/application' } }, owner)
+  } else if (toStatus === 'rejected') {
+    const code = REJECTION_CODES[metadata.code]
+    const displayReason = String(metadata.displayReason ?? '').trim()
+    failOnFields({ ...(!code && { code: 'Pilih alasan penolakan.' }), ...(displayReason.length < 5 && { displayReason: 'Tulis penjelasan untuk user (minimal 5 karakter).' }) }, 'Lengkapi alasan penolakan.')
+    app.rejection = { code: metadata.code, displayReason, relevantStep: code.relevantStep[app.productType] ?? null, rejectedAt: at }
+    pushActivity(db, { type: 'application_rejected', category: 'application', title: `Pengajuan ke ${app.selection?.bankName ?? 'bank'} belum disetujui`, body: displayReason, action: { label: 'Lihat pilihan', route: '/my-kpr/application' } }, owner)
+  } else {
+    if (toStatus === 'akad') app.finalTerms = finalTermsOf(metadata.finalTerms)
+    const [title, body] = STATUS_COPY[toStatus]
+    pushActivity(db, { type: 'application_status_changed', category: 'application', title, body, action: { label: 'Lihat status', route: '/my-kpr/application' } }, owner)
+  }
+  if (toStatus !== 'additional_docs_requested') app.pendingActions = []
+  app.status = toStatus
+  app.statusHistory.push({ status: toStatus, at })
+  if (toStatus === 'disbursed') completeApplication(db, app, owner)
+  touch(db, app)
 }
 
 function simulationSource(db, source) {
@@ -358,15 +545,426 @@ function runSimulation(db, sim, sort) {
   }
 }
 
+// The team's move (relaying the bank included); additional_docs_requested waits on the user instead.
+const ADMIN_TURN = IN_PROCESS.filter((s) => s !== 'additional_docs_requested')
+const AT_BANK = ['bank_processing', 'appraisal', 'approved', 'old_mortgage_settlement', 'akad']
+
+// Submitted applications (drafts are the user's private work) with their owning account.
+const submittedApps = (db) => userAccounts(db).flatMap((a) => a.applications.filter((app) => app.status !== 'draft').map((app) => ({ app, user: a.user })))
+
+function queueRow(db, app, user) {
+  const since = app.statusHistory.at(-1)?.at ?? app.updatedAt
+  return {
+    id: app.id,
+    userId: user.id,
+    userName: user.name,
+    productType: app.productType,
+    optimizationMode: app.optimizationMode,
+    bankName: app.selection?.bankName ?? null,
+    productName: app.selection?.productName ?? null,
+    status: app.status,
+    submittedAt: app.submittedAt,
+    since,
+    waitingDays: daysUntil({ fromDate: since.slice(0, 10), targetDate: db.clock }),
+    pendingActions: app.pendingActions.length,
+  }
+}
+const longestWaitingFirst = (a, b) => a.since.localeCompare(b.since)
+
+function adminApplications(db, { status, productType, bankName, pendingAction, query = '', from, to } = {}) {
+  const q = query.trim().toLowerCase()
+  const all = submittedApps(db)
+  const items = all
+    .filter(({ app }) => (!status || app.status === status) && (!productType || app.productType === productType) && (!bankName || app.selection?.bankName === bankName))
+    .filter(({ app }) => pendingAction === undefined || app.pendingActions.length > 0 === pendingAction)
+    .filter(({ app }) => (!from || app.submittedAt?.slice(0, 10) >= from) && (!to || app.submittedAt?.slice(0, 10) <= to))
+    .filter(({ app, user }) => !q || user.name.toLowerCase().includes(q) || app.id.toLowerCase().includes(q))
+    .map(({ app, user }) => queueRow(db, app, user))
+    .sort(longestWaitingFirst)
+  return { items, banks: [...new Set(all.map(({ app }) => app.selection?.bankName).filter(Boolean))].sort() }
+}
+
+function findUserApp(db, id) {
+  for (const owner of userAccounts(db)) {
+    const app = owner.applications.find((x) => x.id === id)
+    if (app) return { owner, app }
+  }
+  fail('RESOURCE_NOT_FOUND', 'Pengajuan tidak ditemukan.', 404)
+}
+
+const maskPersonal = (data) => (data?.personal?.nik ? { ...data, personal: { ...data.personal, nik: maskNik(data.personal.nik) } } : data)
+
+// Internal notes live in db.adminNotes, never on the application, so no B2C response can carry them.
+function applicationDetail(db, owner, app) {
+  return {
+    asOf: db.clock,
+    user: { id: owner.user.id, name: owner.user.name, contact: owner.user.contact },
+    application: {
+      id: app.id,
+      productType: app.productType,
+      optimizationMode: app.optimizationMode,
+      status: app.status,
+      version: app.version ?? 1,
+      createdAt: app.createdAt,
+      submittedAt: app.submittedAt,
+      selection: app.selection,
+      finalTerms: app.finalTerms ?? null,
+      rejection: app.rejection,
+      pendingActions: app.pendingActions,
+      statusHistory: app.statusHistory,
+      data: maskPersonal(app.snapshot?.data ?? app.data),
+      documents: requiredDocuments(app).map((d) => ({ ...d, file: app.documents[d.type] ?? null })),
+    },
+    allowedTransitions: allowedTransitions(app),
+    rejectionCodes: Object.entries(REJECTION_CODES).map(([code, c]) => ({ code, label: c.label })),
+    notes: (db.adminNotes ?? []).filter((n) => n.applicationId === app.id),
+  }
+}
+
+// ---- admin catalog (admin plan §4.4) ----
+// A published product keeps its live terms on the record; edits wait in `pendingRevision` until published as
+// version + 1. `version` is what applications pin (selection.productVersion); `rev` counts admin saves and is the
+// concurrency check for edits.
+const CONTENT_KEYS = ['name', 'productTypes', 'scheme', 'ratePeriods', 'fees', 'eligibility', 'effectiveFrom', 'effectiveUntil', 'lastVerifiedAt']
+const contentOf = (p) => p.pendingRevision ?? Object.fromEntries(['bank', ...CONTENT_KEYS].map((k) => [k, p[k]]))
+
+function findProduct(db, id) {
+  const p = catalogOf(db).find((x) => x.id === id)
+  if (!p) fail('RESOURCE_NOT_FOUND', 'Produk tidak ditemukan.', 404)
+  return p
+}
+function checkRev(p, expectedVersion) {
+  checkVersion({ version: p.rev ?? 1 }, expectedVersion)
+}
+
+// Form values → catalog shape. Only the keys sent change; bankId becomes the embedded bank.
+function productInput(db, values = {}) {
+  const { bankId, ...rest } = pickFields(values, ['bankId', ...CONTENT_KEYS])
+  const bank = bankId !== undefined && banksOf(db).find((b) => b.id === bankId)
+  return { ...rest, ...(typeof rest.name === 'string' && { name: rest.name.trim() }), ...(bankId !== undefined && { bank: bank ? { id: bank.id, name: bank.name, mark: bank.mark } : null }) }
+}
+
+// Draft saves need a name and a bank; publishing needs everything matching reads (programs.js).
+function productIssues(db, c, full) {
+  const int = (v, min, max) => Number.isInteger(v) && v >= min && v <= max
+  const date = (v) => !!parseIsoDate(v)
+  const e = {}
+  if (String(c.name ?? '').trim().length < 3) e.name = 'Isi nama produk (minimal 3 huruf).'
+  if (!c.bank || !banksOf(db).some((b) => b.id === c.bank.id)) e.bankId = 'Pilih bank.'
+  if (!full) return e
+  const types = c.productTypes ?? []
+  if (!types.length || types.some((t) => !['primary', 'takeover'].includes(t))) e.productTypes = 'Pilih minimal satu jenis produk.'
+  if (!['conventional', 'sharia'].includes(c.scheme)) e.scheme = 'Pilih skema.'
+  const fixed = c.ratePeriods?.find((p) => p.type === 'fixed')
+  const floating = c.ratePeriods?.find((p) => p.type === 'floating')
+  const el = c.eligibility ?? {}
+  const fees = c.fees ?? {}
+  if (!int(el.maximumTenorMonths, 12, 360)) e.maximumTenorMonths = 'Tenor maksimal 12–360 bulan.'
+  if (!int(fixed?.durationMonths, 1, 359)) e.fixedMonths = 'Isi masa fixed dalam bulan.'
+  else if (fixed.durationMonths >= el.maximumTenorMonths) e.fixedMonths = 'Masa fixed harus lebih pendek dari tenor maksimal.'
+  if (!int(fixed?.rateBps, 1, 3000)) e.fixedRateBps = 'Isi bunga fixed 0,01–30%.'
+  if (!int(floating?.rateBps, 1, 3000)) e.floatingRateBps = 'Isi estimasi bunga floating 0,01–30%.'
+  if (!int(fees.provisionBps, 0, 1000)) e.provisionBps = 'Provisi 0–10%.'
+  if (!int(fees.admin, 0, Number.MAX_SAFE_INTEGER)) e.admin = 'Isi biaya administrasi (boleh 0).'
+  if (types.includes('takeover')) for (const k of ['appraisal', 'notary', 'insurance']) if (!int(fees[k], 0, Number.MAX_SAFE_INTEGER)) e[k] = 'Isi biaya (boleh 0).'
+  if (!int(el.maximumDtiBps, 1, 10000)) e.maximumDtiBps = 'DTI maksimal 0,01–100%.'
+  if (!int(el.maximumLtvBps, 1, 10000)) e.maximumLtvBps = 'LTV maksimal 0,01–100%.'
+  if (types.includes('primary')) {
+    if (!int(el.minimumIncome, 0, Number.MAX_SAFE_INTEGER)) e.minimumIncome = 'Isi penghasilan minimum (boleh 0).'
+    if (!int(el.minimumAge, 17, 70)) e.minimumAge = 'Usia minimum 17–70 tahun.'
+    if (!int(el.maximumAgeAtMaturity, 40, 85)) e.maximumAgeAtMaturity = 'Usia maksimal saat lunas 40–85 tahun.'
+    if (!el.occupations?.length) e.occupations = 'Pilih minimal satu jenis pekerjaan.'
+    if (!el.propertyTypes?.length) e.propertyTypes = 'Pilih minimal satu jenis properti.'
+  }
+  if (!date(c.effectiveFrom)) e.effectiveFrom = 'Pilih tanggal mulai berlaku.'
+  if (!date(c.effectiveUntil)) e.effectiveUntil = 'Pilih tanggal akhir berlaku.'
+  else if (date(c.effectiveFrom) && c.effectiveUntil < c.effectiveFrom) e.effectiveUntil = 'Tanggal akhir harus setelah tanggal mulai.'
+  if (!date(c.lastVerifiedAt) || c.lastVerifiedAt > db.clock) e.lastVerifiedAt = 'Isi tanggal data terakhir diverifikasi (tidak di masa depan).'
+  return e
+}
+
+function productRow(db, p) {
+  return {
+    id: p.id,
+    name: p.name,
+    bankName: p.bank?.name ?? null,
+    productTypes: p.productTypes ?? [],
+    status: p.status,
+    version: p.version ?? 0,
+    rev: p.rev ?? 1,
+    effectiveUntil: p.effectiveUntil ?? null,
+    lastVerifiedAt: p.lastVerifiedAt ?? null,
+    stale: p.lastVerifiedAt ? isStale(p, db.clock) : false,
+    hasPendingRevision: Boolean(p.pendingRevision),
+  }
+}
+function bankIssues(db, b) {
+  const e = {}
+  if (b.name.length < 2) e.name = 'Isi nama bank.'
+  if (!/^[A-Z0-9]{2,5}$/.test(b.mark)) e.mark = 'Kode bank 2–5 huruf/angka.'
+  else if (banksOf(db).some((x) => x.id !== b.id && x.mark === b.mark)) e.mark = 'Kode ini sudah dipakai bank lain.'
+  if (typeof b.active !== 'boolean') e.active = 'Pilih status bank.'
+  return e
+}
+
+const productDetail = (db, p) => ({ asOf: db.clock, product: productRow(db, p), content: contentOf(p), issues: productIssues(db, contentOf(p), true), banks: banksOf(db) })
+const productAudit = (db, p, action, extra = {}) => audit(db, { action, resource: { type: 'product', id: p.id, label: p.name }, ...extra })
+
+// ---- admin articles (admin plan §4.5) ----
+// Seed content stays in articles.js until the first admin write copies it into db.articles (like the catalog).
+// No revision layer: a published edit is live at once, so it needs a reason. The slug is locked once published
+// because links and Home picks (widgetData.js) find articles by slug.
+const ARTICLE_KEYS = ['title', 'slug', 'tag', 'icon', 'summary', 'minutes', 'body']
+const ARTICLE_ICONS = ['percent', 'wallet', 'receipt', 'repeat', 'hand-coins'] // HomePage ARTICLE_ICONS
+const articlesOf = (db) => db.articles ?? ARTICLES.map((a) => ({ id: `art_${a.slug}`, ...a, status: 'published', rev: 1, updatedAt: '2026-09-01T02:00:00.000Z' }))
+const publishedArticles = (db) => articlesOf(db).filter((a) => a.status === 'published').map((a) => pickFields(a, ARTICLE_KEYS))
+
+function findArticle(db, id) {
+  const a = articlesOf(db).find((x) => x.id === id)
+  if (!a) fail('RESOURCE_NOT_FOUND', 'Artikel tidak ditemukan.', 404)
+  return a
+}
+function articleInput(values) {
+  const v = pickFields(values, ARTICLE_KEYS)
+  for (const k of ['title', 'slug', 'tag', 'summary']) if (typeof v[k] === 'string') v[k] = v[k].trim()
+  if (Array.isArray(v.body)) v.body = v.body.map((p) => String(p).trim()).filter(Boolean)
+  return v
+}
+// Draft saves need a title and a free, URL-safe slug (archived slugs stay taken); publishing needs every field.
+function articleIssues(db, a, full) {
+  const e = {}
+  if (String(a.title ?? '').length < 3) e.title = 'Isi judul (minimal 3 huruf).'
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(a.slug ?? '')) e.slug = 'Pakai huruf kecil, angka, dan tanda hubung.'
+  else if (articlesOf(db).some((x) => x.id !== a.id && x.slug === a.slug)) e.slug = 'Slug ini sudah dipakai artikel lain.'
+  if (!full) return e
+  if (!a.tag) e.tag = 'Isi tag.'
+  if (!ARTICLE_ICONS.includes(a.icon)) e.icon = 'Pilih ikon.'
+  if (String(a.summary ?? '').length < 10) e.summary = 'Isi ringkasan (minimal 10 huruf).'
+  if (!(Number.isInteger(a.minutes) && a.minutes >= 1 && a.minutes <= 30)) e.minutes = 'Menit baca 1–30.'
+  if (!a.body?.length) e.body = 'Isi minimal satu paragraf.'
+  return e
+}
+const articleRow = ({ id, title, slug, tag, minutes, status, rev, updatedAt }) => ({ id, title, slug, tag: tag ?? null, minutes: minutes ?? null, status, rev, updatedAt })
+const articleDetail = (db, a) => ({ article: articleRow(a), content: pickFields(a, ARTICLE_KEYS), issues: articleIssues(db, a, true) })
+const articleAudit = (db, a, action, extra = {}) => audit(db, { action, resource: { type: 'article', id: a.id, label: a.title }, ...extra })
+
+// Backend-shaped aggregates for the admin overview (admin plan §4.1); the UI only renders them.
+function adminOverview(db) {
+  const accounts = userAccounts(db)
+  const apps = submittedApps(db)
+  const count = (statuses) => apps.filter(({ app }) => statuses.includes(app.status)).length
+  const reached = (status) => apps.filter(({ app }) => app.statusHistory.some((h) => h.status === status)).length
+  const queue = apps
+    .filter(({ app }) => ADMIN_TURN.includes(app.status))
+    .map(({ app, user }) => queueRow(db, app, user))
+    .sort(longestWaitingFirst)
+  const products = productsOf(db)
+  const live = products.filter((p) => isAvailable(p, db.clock))
+  return {
+    asOf: db.clock,
+    recentActivity: (db.auditLog ?? []).slice(0, 5),
+    users: { total: accounts.length },
+    applications: {
+      byStatus: apps.reduce((acc, { app }) => ({ ...acc, [app.status]: (acc[app.status] ?? 0) + 1 }), {}),
+      needsReview: count(['submitted', 'docs_verification']),
+      waitingOnUser: count(['additional_docs_requested']),
+      atBank: count(AT_BANK),
+      funnel: { submitted: reached('submitted'), approved: reached('approved'), disbursed: reached('disbursed') },
+      queue,
+    },
+    products: {
+      active: live.length,
+      draft: catalogOf(db).filter((p) => p.status === 'draft').length,
+      expired: products.filter((p) => p.effectiveUntil < db.clock).length,
+      stale: live.filter((p) => isStale(p, db.clock)).length,
+      nearestExpiry: [...live]
+        .sort((a, b) => a.effectiveUntil.localeCompare(b.effectiveUntil))
+        .slice(0, 5)
+        .map((p) => ({
+          id: p.id,
+          bankName: p.bank.name,
+          name: p.name,
+          productTypes: p.productTypes,
+          effectiveUntil: p.effectiveUntil,
+          daysLeft: daysUntil({ fromDate: db.clock, targetDate: p.effectiveUntil }),
+          lastVerifiedAt: p.lastVerifiedAt,
+          stale: isStale(p, db.clock),
+        })),
+    },
+  }
+}
+
+// ---- admin reports (admin plan §4.6) ----
+// Totals count what happened inside the period; the stage table follows the applications submitted in it, up to
+// today. Dates compare by ISO date (UTC in the mock; the backend timezone is open question §12 Q5).
+const REPORT_STAGES = ['submitted', 'docs_verification', 'bank_processing', 'appraisal', 'approved', 'akad', 'disbursed']
+const enteredAt = (app, status) => app.statusHistory.find((h) => h.status === status)?.at ?? null
+
+function reportScope(db, { from, to, productType, bankName } = {}) {
+  const filters = { from: from || addDays(db.clock, -29), to: to || db.clock, productType: productType || null, bankName: bankName || null }
+  const e = {}
+  if (!parseIsoDate(filters.from)) e.from = 'Pilih tanggal mulai.'
+  if (!parseIsoDate(filters.to)) e.to = 'Pilih tanggal akhir.'
+  else if (!e.from && filters.from > filters.to) e.to = 'Tanggal akhir tidak boleh sebelum tanggal mulai.'
+  failOnFields(e, 'Periksa rentang tanggal.')
+  const inPeriod = (iso) => !!iso && iso.slice(0, 10) >= filters.from && iso.slice(0, 10) <= filters.to
+  const matches = (app) => (!filters.productType || app.productType === filters.productType) && (!filters.bankName || app.selection?.bankName === filters.bankName)
+  const accounts = userAccounts(db)
+  const apps = accounts.flatMap((a) => a.applications).filter(matches)
+  const cohort = apps.filter((app) => inPeriod(app.submittedAt)).sort((a, b) => a.submittedAt.localeCompare(b.submittedAt))
+  return { filters, inPeriod, matches, accounts, apps, cohort }
+}
+
+function adminReport(db, params) {
+  const { filters, inPeriod, matches, accounts, apps, cohort } = reportScope(db, params)
+  const registered = accounts.filter((a) => inPeriod(a.user.createdAt))
+  const reached = (status) => apps.filter((app) => app.statusHistory.some((h) => h.status === status && inPeriod(h.at))).length
+  const days = (from, to) => (Date.parse(to) - Date.parse(from)) / 86_400_000
+  const stages = REPORT_STAGES.map((status, i) => {
+    const entered = cohort.filter((app) => enteredAt(app, status))
+    const next = REPORT_STAGES[i + 1]
+    const spans = next ? entered.filter((app) => enteredAt(app, next)).map((app) => days(enteredAt(app, status), enteredAt(app, next))) : []
+    return { status, count: entered.length, avgDays: spans.length ? Math.round((spans.reduce((s, d) => s + d, 0) / spans.length) * 10) / 10 : null }
+  })
+  // Selection is the demand signal, so drafts count here (aggregated only).
+  const picked = new Map()
+  for (const { selection: s, productType } of apps.filter((app) => app.selection && inPeriod(app.createdAt))) {
+    const row = picked.get(s.bankProductId) ?? { id: s.bankProductId, bankName: s.bankName, productName: s.productName, productType, count: 0 }
+    picked.set(s.bankProductId, { ...row, count: row.count + 1 })
+  }
+  return {
+    asOf: db.clock,
+    filters,
+    banks: [...new Set(accounts.flatMap((a) => a.applications).map((app) => app.selection?.bankName).filter(Boolean))].sort(),
+    users: { registered: registered.length, withApplication: registered.filter((a) => a.applications.some(matches)).length },
+    applications: { created: apps.filter((app) => inPeriod(app.createdAt)).length, submitted: cohort.length, approved: reached('approved'), rejected: reached('rejected'), disbursed: reached('disbursed') },
+    stages: stages.map((s, i) => ({ ...s, conversionBps: i && stages[i - 1].count ? Math.round((s.count * 10_000) / stages[i - 1].count) : null })),
+    products: [...picked.values()].sort((a, b) => b.count - a.count || a.productName.localeCompare(b.productName)),
+  }
+}
+
+// Whitelisted columns only: no name, contact, NIK, or documents ever leave in an export.
+const CSV_COLUMNS = [
+  ['id_pengajuan', (app) => app.id],
+  ['jenis_produk', (app) => app.productType],
+  ['bank', (app) => app.selection?.bankName],
+  ['produk', (app) => app.selection?.productName],
+  ['status', (app) => app.status],
+  ['dibuat', (app) => app.createdAt?.slice(0, 10)],
+  ['diajukan', (app) => app.submittedAt?.slice(0, 10)],
+  ['disetujui', (app) => enteredAt(app, 'approved')?.slice(0, 10)],
+  ['ditolak', (app) => enteredAt(app, 'rejected')?.slice(0, 10)],
+  ['cair', (app) => enteredAt(app, 'disbursed')?.slice(0, 10)],
+]
+// Text a spreadsheet would run as a formula gets a leading ' (OWASP CSV injection), then RFC 4180 quoting.
+function csvCell(value) {
+  const s = String(value ?? '')
+  const inert = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+  return /[",\n\r]/.test(inert) ? `"${inert.replaceAll('"', '""')}"` : inert
+}
+
+// ---- admin configuration (admin plan §4.7) ----
+// Settings start at the values the app shipped with; the first admin save copies them into db.config. Reminder
+// defaults only shape KPRs set up later: reminders a user already saved are theirs.
+const DEFAULT_CONFIG = { version: 1, reminders: DEFAULT_REMINDERS, upload: DEFAULT_UPLOAD }
+const configOf = (db) => db.config ?? DEFAULT_CONFIG
+const CONFIG_LABEL = { reminders: 'Pengingat default', upload: 'Unggah dokumen' }
+
+function configInput(section, v = {}) {
+  const desc = (list) => [...new Set(list ?? [])].sort((a, b) => b - a)
+  if (section === 'reminders') return { payment: desc(v.payment), fixedExpiry: desc(v.fixedExpiry), channels: { inApp: !!v.channels?.inApp, email: !!v.channels?.email, whatsapp: !!v.channels?.whatsapp } }
+  return { maxFileMb: v.maxFileMb, formats: Object.keys(UPLOAD_FORMATS).filter((f) => v.formats?.includes(f)) }
+}
+function configIssues(section, v) {
+  if (section === 'reminders') {
+    const e = validateReminders(v)
+    if (v.payment.some((n) => ![7, 3, 1, 0].includes(n))) e.payment = 'Pilih dari H-7, H-3, H-1, atau Hari-H.'
+    if (v.fixedExpiry.some((n) => !FIXED_MILESTONES.includes(n))) e.fixedExpiry = 'Pilih dari H-90 sampai H-7.'
+    if (v.channels.whatsapp) e.channels = 'WhatsApp belum tersedia.'
+    return e
+  }
+  return {
+    ...(!(Number.isInteger(v.maxFileMb) && v.maxFileMb >= 1 && v.maxFileMb <= 20) && { maxFileMb: 'Isi ukuran 1–20 MB.' }),
+    ...(!v.formats.length && { formats: 'Pilih minimal satu format.' }),
+  }
+}
+
+// KPR Health versions are append-only: publishing adds a version, a rollback republishes an old one as a new
+// version, and the newest is the one in force. Version 1 is the formula in derive.js.
+const SEEDED_HEALTH = { ...HEALTH_V1, reason: 'Formula awal KPR Health', publishedAt: '2026-09-01T02:00:00.000Z', publishedBy: null, rollbackOf: null }
+const healthVersionsOf = (db) => db.healthConfigs ?? [SEEDED_HEALTH]
+const activeHealth = (db) => healthVersionsOf(db).at(-1)
+const healthDetail = (db) => ({ active: activeHealth(db), versions: [...healthVersionsOf(db)].reverse().map(({ params: _p, ...v }) => v) })
+
+function healthIssues(p) {
+  const score = (s) => Number.isInteger(s) && s >= 0 && s <= 100
+  // Limits rise band by band; the last band is open (`upTo: null`).
+  const bands = (list, max) =>
+    Array.isArray(list) &&
+    list.length >= 2 &&
+    list.every((b, i) => score(b?.score) && (i === list.length - 1 ? b.upTo === null : Number.isInteger(b.upTo) && b.upTo > 0 && b.upTo <= max && (i === 0 || b.upTo > list[i - 1].upTo)))
+  const weights = ['dti', 'ltv', 'rate', 'progress'].map((k) => p?.weights?.[k])
+  const e = {}
+  if (!bands(p?.dti, 10_000)) e.dti = 'Batas harus naik dari baris ke baris (maks. 100%), skor 0–100.'
+  if (!bands(p?.ltv, 20_000)) e.ltv = 'Batas harus naik dari baris ke baris (maks. 200%), skor 0–100.'
+  if (!score(p?.rate?.floating) || !bands(p?.rate?.fixedDays, 3650)) e.rate = 'Batas hari harus naik dari baris ke baris, skor 0–100.'
+  if (!score(p?.progress?.base) || !score(p?.progress?.perPaid)) e.progress = 'Skor dasar dan tambahan 0–100.'
+  if (!weights.every((w) => Number.isInteger(w) && w >= 0 && w <= 10) || !weights.some((w) => w > 0)) e.weights = 'Bobot 0–10, minimal satu lebih dari 0.'
+  if (!(score(p?.labels?.healthy) && score(p?.labels?.attention) && p.labels.attention < p.labels.healthy)) e.labels = 'Ambang Sehat harus lebih tinggi dari ambang Perlu perhatian.'
+  return e
+}
+// Only the known keys are stored (call after healthIssues passes).
+const healthInput = ({ dti, ltv, rate, progress, weights, labels }) => {
+  const band = (list) => list.map(({ upTo, score }) => ({ upTo, score }))
+  return {
+    dti: band(dti),
+    ltv: band(ltv),
+    rate: { floating: rate.floating, fixedDays: band(rate.fixedDays) },
+    progress: { base: progress.base, perPaid: progress.perPaid },
+    weights: { dti: weights.dti, ltv: weights.ltv, rate: weights.rate, progress: weights.progress },
+    labels: { healthy: labels.healthy, attention: labels.attention },
+  }
+}
+function publishHealth(db, { params, reason, rollbackOf, action }) {
+  db.healthConfigs ??= structuredClone(healthVersionsOf(db))
+  const before = activeHealth(db)
+  const v = { version: before.version + 1, params, reason: reason.trim(), publishedAt: nowIso(db), publishedBy: { id: db.user.id, name: db.user.name }, rollbackOf }
+  db.healthConfigs.push(v)
+  audit(db, { action, resource: { type: 'health_config', id: `v${v.version}`, label: `KPR Health v${v.version}` }, reason, before: { version: before.version }, after: { version: v.version } })
+  return healthDetail(db)
+}
+
+// Before/after on the seed scenarios a reviewer already knows, plus two synthetic edges (admin plan §4.7).
+const HEALTH_FIXTURES = [
+  ['mortgage_active_normal', 'KPR fixed, kondisi normal'],
+  ['mortgage_active_h90', 'Fixed berakhir < 90 hari'],
+  ['mortgage_active_floating', 'Sudah floating'],
+  ['mortgage_partial_property', 'Nilai properti belum diisi'],
+]
+function healthFixtures() {
+  const seeded = HEALTH_FIXTURES.map(([key, label]) => ({ key, label, m: createSeed(key).mortgages[0] }))
+  const { m } = seeded[0]
+  const debts = m.finance.vehicleDebt + m.finance.cardDebt + m.finance.otherDebt
+  return [
+    ...seeded,
+    { key: 'high_dti', label: 'Rasio cicilan 48% (sintetis)', m: { ...m, finance: { ...m.finance, monthlyIncome: Math.round((m.currentPayment + debts) / 0.48) } } },
+    { key: 'high_ltv', label: 'LTV 92% (sintetis)', m: { ...m, property: { ...m.property, estimatedValue: Math.round(m.outstandingPrincipal / 0.92) } } },
+  ]
+}
+const scoreOf = ({ score, label, tone, partial }) => ({ score, label, tone, partial })
+
 // ---------- adapter ----------
 export function createMockApi({ latencyMs = 300 } = {}) {
   const call =
-    (name, fn, { auth = true } = {}) =>
+    (name, fn, { auth = true, admin = false } = {}) =>
     async (...args) => {
+      const seq = ++callSeq
       if (latencyMs) await sleep(latencyMs)
-      maybeFail(name)
+      maybeFail(name, seq)
       const db = loadDb()
       if (auth && db.session.status !== 'authenticated') fail('AUTH_REQUIRED', 'Sesi berakhir. Silakan masuk lagi.', 401)
+      // admin: true = super admin only; a module name also lets the roles that own it through (roles.js).
+      if (admin && !canOpen(db.user.role, admin === true ? null : admin)) fail('FORBIDDEN', 'Halaman ini di luar akses akun kamu.', 403)
       const result = fn(db, ...args)
       saveDb(db)
       return clone(result)
@@ -376,7 +974,12 @@ export function createMockApi({ latencyMs = 300 } = {}) {
     auth: {
       getSession: call(
         'auth.getSession',
-        (db) => ({ status: db.session.status, user: db.user, verification: db.session.verification ? { maskedDestination: db.session.verification.maskedDestination, resendAvailableAt: db.session.verification.resendAvailableAt } : null }),
+        (db) => ({
+          status: db.session.status,
+          role: db.session.status === 'authenticated' ? db.user.role : null,
+          user: db.user,
+          verification: db.session.verification ? { maskedDestination: db.session.verification.maskedDestination, resendAvailableAt: db.session.verification.resendAvailableAt } : null,
+        }),
         { auth: false },
       ),
       register: call(
@@ -421,7 +1024,8 @@ export function createMockApi({ latencyMs = 300 } = {}) {
             saveDb(db)
             fail('OTP_INVALID', otp === OTP_WRONG ? 'Kode salah. Coba lagi.' : 'Kode salah atau kedaluwarsa. Coba lagi.', 401)
           }
-          db.user = { id: db.user?.id ?? 'usr_01J8Z0Y5MA6W2Q9T4P7K3R1CDE', name: v.name, contact: v.contact, contactType: v.contactType }
+          switchAccount(db, v.contact)
+          db.user = { role: 'user', createdAt: nowIso(db), ...db.user, id: db.user?.id ?? nextId(db, 'usr'), name: v.name, contact: v.contact, contactType: v.contactType }
           db.profile = { ...db.profile, fullName: db.profile?.fullName || v.name, [v.contactType === 'email' ? 'email' : 'phone']: v.contact, consents: v.consents }
           db.session = { status: 'authenticated', verification: null }
           return { user: db.user }
@@ -452,8 +1056,10 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       deleteAccount: call('auth.deleteAccount', (db) => {
         if (db.applications.some((a) => IN_PROCESS.includes(a.status))) fail('INVALID_STATE_TRANSITION', 'Masih ada pengajuan yang sedang diproses bank. Batalkan atau tunggu sampai selesai sebelum menghapus akun.', 400)
         // In place: `call` saves this same object afterwards. Clear first so keys outside the seed (takeoverKept) go too.
+        // Only the signed-in account goes: other accounts in this browser and the id sequence stay.
+        const { accounts, seq } = db
         Object.keys(db).forEach((k) => delete db[k])
-        Object.assign(db, createSeed('guest'))
+        Object.assign(db, createSeed('guest'), { accounts, seq })
         return { deleted: true }
       }),
     },
@@ -470,6 +1076,8 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         unreadActivities: db.activities.filter((a) => !a.readAt).length,
         dashboardLayout: savedLayout(db),
         toursSeen: db.toursSeen ?? [],
+        // What pages need from admin configuration: the live KPR Health version, reminder defaults, upload limits.
+        config: { health: (({ version, params }) => ({ version, params }))(activeHealth(db)), reminders: configOf(db).reminders, upload: configOf(db).upload },
       })),
       // null restores the default board; a missing field means the user never customised it.
       saveLayout: call('dashboard.saveLayout', (db, layout) => {
@@ -491,11 +1099,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       update: call('profile.update', (db, values) => {
         const { finance, ...profile } = values
         db.profile = { ...db.profile, ...profile }
-        if (finance) {
-          db.finance = { ...db.finance, ...finance }
-          // One source: KPR Health reads the mortgage copy, so keep it in step with the profile.
-          for (const m of db.mortgages) if (m.status === 'draft' || m.status === 'active') m.finance = { ...m.finance, ...finance }
-        }
+        if (finance) applyFinance(db, finance)
         return { ...db.profile, finance: db.finance }
       }),
     },
@@ -553,14 +1157,15 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       }),
       // Upload progress happens before the transaction so parallel uploads never overwrite each other.
       uploadDocument: async (id, { documentType, file }, { onProgress } = {}) => {
+        const seq = ++callSeq
         if (latencyMs) await sleep(latencyMs / 2)
-        if (ENFORCE_FILE_RULES && !ACCEPTED_EXTENSIONS.test(file.name)) fail('FILE_TYPE_UNSUPPORTED', 'Format tidak didukung. Gunakan JPG, PNG, atau PDF.', 415)
-        if (ENFORCE_FILE_RULES && file.size > MAX_FILE_BYTES) fail('FILE_TOO_LARGE', 'Ukuran file lebih dari 5MB. Kompres dulu, lalu coba lagi.', 413)
+        const problem = uploadProblem(file, configOf(loadDb()).upload)
+        if (problem) fail(problem.code, problem.message, problem.status)
         for (const pct of [20, 45, 70, 90]) {
           if (latencyMs) await sleep(Math.max(80, latencyMs / 2))
           onProgress?.(pct)
         }
-        maybeFail('applications.uploadDocument')
+        maybeFail('applications.uploadDocument', seq)
         const db = loadDb()
         if (db.session.status !== 'authenticated') fail('AUTH_REQUIRED', 'Sesi berakhir. Silakan masuk lagi.', 401)
         const app = findApp(db, id)
@@ -701,7 +1306,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         if (activeMortgageOf(db)) fail('ACTIVE_MORTGAGE_EXISTS', 'KPR kamu sudah dipantau. Versi ini mendukung satu KPR aktif.', 409)
         const draft = db.mortgages.find((m) => m.status === 'draft')
         if (draft) return draft
-        const m = { id: nextId(db, 'mtg'), status: 'draft', setupStep: 1, source: 'monitoring', finance: { ...db.finance }, reminders: structuredClone(DEFAULT_REMINDERS), payments: [], rateHistory: [], version: 1, createdAt: nowIso(db) }
+        const m = { id: nextId(db, 'mtg'), status: 'draft', setupStep: 1, source: 'monitoring', finance: { ...db.finance }, reminders: structuredClone(configOf(db).reminders), payments: [], rateHistory: [], version: 1, createdAt: nowIso(db) }
         db.mortgages.unshift(m)
         return m
       }),
@@ -786,8 +1391,8 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         const m = findMortgage(db, id)
         if (!(amount > 0)) fail('VALIDATION_FAILED', 'Nominal harus lebih dari 0.', 400, { fieldErrors: [{ field: 'amount', message: 'Nominal harus lebih dari 0.' }] })
         if (!parseIsoDate(paidAt) || paidAt > db.clock) fail('VALIDATION_FAILED', 'Tanggal bayar tidak valid.', 400, { fieldErrors: [{ field: 'paidAt', message: 'Tanggal bayar tidak boleh di masa depan.' }] })
-        if (proof && !ACCEPTED_EXTENSIONS.test(proof.name)) fail('FILE_TYPE_UNSUPPORTED', 'Format tidak didukung. Gunakan JPG, PNG, atau PDF.', 415)
-        if (proof && proof.size > MAX_FILE_BYTES) fail('FILE_TOO_LARGE', 'Ukuran file lebih dari 5MB. Kompres dulu, lalu coba lagi.', 413)
+        const problem = proof && uploadProblem(proof, configOf(db).upload)
+        if (problem) fail(problem.code, problem.message, problem.status)
         if (m.payments.some((p) => p.dueDate === dueDate && p.status === 'paid')) fail('DUPLICATE_PAYMENT_RECORD', 'Pembayaran bulan ini sudah ditandai.', 409)
         const payment = { id: nextId(db, 'pay'), dueDate, amount, status: 'paid', paidAt, source: 'manual_user_recorded', bankConfirmed: false, proof: proof ? { fileName: proof.name, sizeBytes: proof.size, contentType: proof.type } : null }
         m.payments.push(payment)
@@ -866,7 +1471,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       // Signals are computed with the same engine as the simulation; never design placeholder numbers.
       get: call('explore.get', (db) => {
         const m = activeMortgageOf(db)
-        const education = ARTICLES.map(({ body: _b, ...a }) => a)
+        const education = publishedArticles(db).map(({ body: _b, ...a }) => a)
         if (!m) return { hasActiveMortgage: false, signals: null, education, message: 'Take Over, Refinancing, dan Multiguna aktif setelah KPR disetujui dan akad.' }
         const days = m.currentRateType === 'fixed' && m.fixedUntil && m.fixedUntil >= db.clock ? daysUntil({ fromDate: db.clock, targetDate: m.fixedUntil }) : null
         let opportunity = { available: false }
@@ -902,7 +1507,7 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         }
       }),
       article: call('explore.article', (db, slug) => {
-        const a = ARTICLES.find((x) => x.slug === slug)
+        const a = publishedArticles(db).find((x) => x.slug === slug)
         if (!a) fail('RESOURCE_NOT_FOUND', 'Artikel tidak ditemukan.', 404)
         return a
       }),
@@ -922,6 +1527,414 @@ export function createMockApi({ latencyMs = 300 } = {}) {
         return { ok: true }
       }),
     },
+
+    // super_admin only (admin dashboard plan): app registrations and sample users alike.
+    admin: {
+      overview: {
+        get: call('admin.overview.get', adminOverview, { admin: true }),
+      },
+      reports: {
+        get: call('admin.reports.get', adminReport, { admin: true }),
+        // The backend streams this; the mock returns the text and the page saves it as a file.
+        exportCsv: call(
+          'admin.reports.exportCsv',
+          (db, params) => {
+            const { filters, cohort } = reportScope(db, params)
+            const rows = [CSV_COLUMNS.map(([name]) => name), ...cohort.map((app) => CSV_COLUMNS.map(([, get]) => get(app)))]
+            audit(db, { action: 'report.export', resource: { type: 'report', id: 'applications', label: 'Pengajuan per periode' }, after: { ...filters, rows: cohort.length } })
+            return { filename: `laporan-pengajuan-${filters.from}-${filters.to}.csv`, csv: `${rows.map((r) => r.map(csvCell).join(',')).join('\n')}\n`, rows: cohort.length }
+          },
+          { admin: true },
+        ),
+      },
+      config: {
+        get: call('admin.config.get', (db) => ({ config: configOf(db), health: { version: activeHealth(db).version, publishedAt: activeHealth(db).publishedAt } }), { admin: true }),
+        update: call(
+          'admin.config.update',
+          (db, section, { values, reason, expectedVersion }) => {
+            if (!CONFIG_LABEL[section]) fail('RESOURCE_NOT_FOUND', 'Bagian konfigurasi tidak dikenal.', 404)
+            requireReason(reason)
+            db.config ??= structuredClone(DEFAULT_CONFIG)
+            checkVersion(db.config, expectedVersion)
+            const next = configInput(section, values)
+            failOnFields(configIssues(section, next), 'Periksa kembali pengaturan ini.')
+            const diff = changes(db.config[section], next, Object.keys(next))
+            if (!diff) fail('VALIDATION_FAILED', 'Tidak ada perubahan untuk disimpan.', 400)
+            db.config[section] = next
+            bumpVersion(db.config)
+            audit(db, { action: 'config.update', resource: { type: 'config', id: section, label: CONFIG_LABEL[section] }, reason, ...diff })
+            return { config: db.config, health: { version: activeHealth(db).version, publishedAt: activeHealth(db).publishedAt } }
+          },
+          { admin: true },
+        ),
+      },
+      health: {
+        get: call('admin.health.get', healthDetail, { admin: true }),
+        // The draft lives in the editor until it is published; nothing here is stored.
+        preview: call(
+          'admin.health.preview',
+          (db, { params }) => {
+            failOnFields(healthIssues(params), 'Periksa kembali formula.')
+            const active = activeHealth(db)
+            const draft = { version: active.version + 1, params: healthInput(params) }
+            return {
+              activeVersion: active.version,
+              items: healthFixtures().map(({ key, label, m }) => ({ key, label, before: scoreOf(deriveMortgage(m, db.clock, active).health), after: scoreOf(deriveMortgage(m, db.clock, draft).health) })),
+            }
+          },
+          { admin: true },
+        ),
+        publish: call(
+          'admin.health.publish',
+          (db, { params, reason, expectedVersion }) => {
+            requireReason(reason)
+            checkVersion(activeHealth(db), expectedVersion)
+            failOnFields(healthIssues(params), 'Periksa kembali formula.')
+            return publishHealth(db, { params: healthInput(params), reason, rollbackOf: null, action: 'health.publish' })
+          },
+          { admin: true },
+        ),
+        rollback: call(
+          'admin.health.rollback',
+          (db, { toVersion, reason, expectedVersion }) => {
+            requireReason(reason)
+            checkVersion(activeHealth(db), expectedVersion)
+            const target = healthVersionsOf(db).find((v) => v.version === toVersion)
+            if (!target) fail('RESOURCE_NOT_FOUND', 'Versi formula tidak ditemukan.', 404)
+            if (target === activeHealth(db)) fail('INVALID_STATE_TRANSITION', 'Versi ini sedang berlaku.', 409)
+            return publishHealth(db, { params: structuredClone(target.params), reason, rollbackOf: target.version, action: 'health.rollback' })
+          },
+          { admin: true },
+        ),
+      },
+      // Read-only: nothing in the API edits or deletes an audit event (admin plan §4.8). The backend pages with a cursor.
+      audit: {
+        list: call(
+          'admin.audit.list',
+          (db, { resourceType, from, to, query = '' } = {}) => {
+            const q = query.trim().toLowerCase()
+            return (db.auditLog ?? []).filter(
+              (e) =>
+                (!resourceType || e.resource.type === resourceType) &&
+                (!from || e.occurredAt.slice(0, 10) >= from) &&
+                (!to || e.occurredAt.slice(0, 10) <= to) &&
+                (!q || [e.reason, e.resource.label, e.actor.name].some((s) => s?.toLowerCase().includes(q))),
+            )
+          },
+          { admin: true },
+        ),
+      },
+      products: {
+        list: call('admin.products.list', (db, { status } = {}) => catalogOf(db).filter((p) => !status || p.status === status).map((p) => productRow(db, p)), { admin: true }),
+        get: call('admin.products.get', (db, id) => productDetail(db, findProduct(db, id)), { admin: true }),
+        create: call(
+          'admin.products.create',
+          (db, { values }) => {
+            editableCatalog(db)
+            const content = productInput(db, values)
+            failOnFields(productIssues(db, content, false), 'Lengkapi nama dan bank produk.')
+            const p = { id: nextId(db, 'bpr'), ...content, status: 'draft', version: 0, rev: 1, updatedAt: nowIso(db) }
+            db.products.push(p)
+            productAudit(db, p, 'product.create')
+            return productDetail(db, p)
+          },
+          { admin: true },
+        ),
+        // Drafts and revisions are not live, so saving them needs no reason; publish/archive do.
+        update: call(
+          'admin.products.update',
+          (db, id, { values, expectedVersion }) => {
+            editableCatalog(db)
+            const p = findProduct(db, id)
+            if (p.status === 'archived') fail('INVALID_STATE_TRANSITION', 'Produk yang diarsipkan tidak bisa diubah.', 409)
+            checkRev(p, expectedVersion)
+            const before = contentOf(p)
+            const content = { ...before, ...productInput(db, values) }
+            failOnFields(productIssues(db, content, false), 'Lengkapi nama dan bank produk.')
+            const diff = changes(before, content, ['bank', ...CONTENT_KEYS])
+            if (p.status === 'published') p.pendingRevision = content
+            else Object.assign(p, content)
+            p.rev = (p.rev ?? 1) + 1
+            p.updatedAt = nowIso(db)
+            productAudit(db, p, 'product.update', diff ?? {})
+            return productDetail(db, p)
+          },
+          { admin: true },
+        ),
+        publish: call(
+          'admin.products.publish',
+          (db, id, { reason, expectedVersion }) => {
+            editableCatalog(db)
+            const p = findProduct(db, id)
+            requireReason(reason)
+            checkRev(p, expectedVersion)
+            if (p.status === 'archived' || (p.status === 'published' && !p.pendingRevision)) fail('INVALID_STATE_TRANSITION', 'Tidak ada draft atau revisi untuk diterbitkan.', 409)
+            const content = contentOf(p)
+            failOnFields(productIssues(db, content, true), 'Lengkapi data produk sebelum diterbitkan.')
+            const before = { status: p.status, version: p.version ?? 0 }
+            Object.assign(p, content, { status: 'published', version: (p.version ?? 0) + 1, rev: (p.rev ?? 1) + 1, updatedAt: nowIso(db) })
+            delete p.pendingRevision
+            productAudit(db, p, 'product.publish', { reason, before, after: { status: 'published', version: p.version } })
+            return productDetail(db, p)
+          },
+          { admin: true },
+        ),
+        // Archive, never delete: applications keep their snapshot, matching stops offering it.
+        archive: call(
+          'admin.products.archive',
+          (db, id, { reason, expectedVersion }) => {
+            editableCatalog(db)
+            const p = findProduct(db, id)
+            requireReason(reason)
+            checkRev(p, expectedVersion)
+            if (p.status === 'archived') fail('INVALID_STATE_TRANSITION', 'Produk ini sudah diarsipkan.', 409)
+            const before = { status: p.status }
+            Object.assign(p, { status: 'archived', rev: (p.rev ?? 1) + 1, updatedAt: nowIso(db) })
+            delete p.pendingRevision
+            productAudit(db, p, 'product.archive', { reason, before, after: { status: 'archived' } })
+            return productDetail(db, p)
+          },
+          { admin: true },
+        ),
+        // What a borrower would pay under these terms, from the same engine as matching. Unsaved `values` allowed.
+        preview: call(
+          'admin.products.preview',
+          (db, id, { principal, termMonths, values } = {}) => {
+            const content = { ...contentOf(findProduct(db, id)), ...productInput(db, values) }
+            const issues = productIssues(db, content, true)
+            const e = Object.fromEntries(['fixedMonths', 'fixedRateBps', 'floatingRateBps'].filter((k) => issues[k]).map((k) => [k, issues[k]]))
+            if (!(Number.isInteger(principal) && principal > 0)) e.principal = 'Isi plafon simulasi.'
+            if (!(Number.isInteger(termMonths) && termMonths >= 12 && termMonths <= 360)) e.termMonths = 'Tenor simulasi 12–360 bulan.'
+            failOnFields(e, 'Lengkapi bunga dan simulasi dulu.')
+            const sim = simulateLoan({ product: content, principal, termMonths })
+            return { payment: sim.payment, paymentAfterFixed: sim.paymentAfterFixed, totalPayment: sim.totalPayment, totalInterest: sim.totalInterest, fixedMonths: sim.fixedMonths }
+          },
+          { admin: true },
+        ),
+      },
+      banks: {
+        list: call(
+          'admin.banks.list',
+          (db) =>
+            banksOf(db).map((b) => ({
+              ...b,
+              products: catalogOf(db).filter((p) => p.bank.id === b.id && p.status !== 'archived').length,
+              published: catalogOf(db).filter((p) => p.bank.id === b.id && p.status === 'published').length,
+            })),
+          { admin: true },
+        ),
+        create: call(
+          'admin.banks.create',
+          (db, { values, reason }) => {
+            editableCatalog(db)
+            requireReason(reason)
+            const bank = { id: nextId(db, 'bnk'), name: String(values?.name ?? '').trim(), mark: String(values?.mark ?? '').trim().toUpperCase(), active: true, version: 1 }
+            failOnFields(bankIssues(db, bank), 'Periksa data bank.')
+            db.banks.push(bank)
+            audit(db, { action: 'bank.create', resource: { type: 'bank', id: bank.id, label: bank.name }, reason, after: { name: bank.name, mark: bank.mark } })
+            return bank
+          },
+          { admin: true },
+        ),
+        update: call(
+          'admin.banks.update',
+          (db, id, { values, reason, expectedVersion }) => {
+            editableCatalog(db)
+            const bank = db.banks.find((b) => b.id === id)
+            if (!bank) fail('RESOURCE_NOT_FOUND', 'Bank tidak ditemukan.', 404)
+            requireReason(reason)
+            checkVersion(bank, expectedVersion)
+            const next = { ...bank, ...pickFields(values, ['name', 'mark', 'active']) }
+            next.name = String(next.name).trim()
+            next.mark = String(next.mark).trim().toUpperCase()
+            failOnFields(bankIssues(db, next), 'Periksa data bank.')
+            const diff = changes(bank, next, ['name', 'mark', 'active'])
+            if (!diff) fail('VALIDATION_FAILED', 'Tidak ada perubahan untuk disimpan.', 400)
+            Object.assign(bank, next)
+            bumpVersion(bank)
+            // Products embed their bank (catalog shape), so a rename travels with them, revisions included.
+            const embedded = { id, name: bank.name, mark: bank.mark }
+            for (const p of db.products.filter((x) => x.bank.id === id)) {
+              p.bank = embedded
+              if (p.pendingRevision) p.pendingRevision.bank = embedded
+            }
+            audit(db, { action: 'bank.update', resource: { type: 'bank', id, label: bank.name }, reason, ...diff })
+            return bank
+          },
+          { admin: true },
+        ),
+      },
+      articles: {
+        list: call(
+          'admin.articles.list',
+          (db, { query = '', status } = {}) => {
+            const q = query.trim().toLowerCase()
+            return articlesOf(db)
+              .filter((a) => (!status || a.status === status) && (!q || `${a.title} ${a.tag ?? ''}`.toLowerCase().includes(q)))
+              .map(articleRow)
+              .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+          },
+          { admin: 'articles' },
+        ),
+        get: call('admin.articles.get', (db, id) => articleDetail(db, findArticle(db, id)), { admin: 'articles' }),
+        create: call(
+          'admin.articles.create',
+          (db, { values }) => {
+            db.articles ??= articlesOf(db)
+            const a = { id: nextId(db, 'art'), ...articleInput(values), status: 'draft', rev: 1, updatedAt: nowIso(db) }
+            failOnFields(articleIssues(db, a, false), 'Lengkapi judul dan slug artikel.')
+            db.articles.push(a)
+            articleAudit(db, a, 'article.create')
+            return articleDetail(db, a)
+          },
+          { admin: 'articles' },
+        ),
+        update: call(
+          'admin.articles.update',
+          (db, id, { values, reason, expectedVersion }) => {
+            db.articles ??= articlesOf(db)
+            const a = findArticle(db, id)
+            if (a.status === 'archived') fail('INVALID_STATE_TRANSITION', 'Artikel yang diarsipkan tidak bisa diubah.', 409)
+            const live = a.status === 'published'
+            if (live) requireReason(reason)
+            checkRev(a, expectedVersion)
+            const next = { ...a, ...articleInput(values) }
+            const e = articleIssues(db, next, live)
+            if (live && next.slug !== a.slug) e.slug = 'Slug tidak bisa diubah setelah artikel terbit.'
+            failOnFields(e, live ? 'Artikel yang tampil harus tetap lengkap.' : 'Lengkapi judul dan slug artikel.')
+            const diff = changes(a, next, ARTICLE_KEYS)
+            Object.assign(a, next, { rev: a.rev + 1, updatedAt: nowIso(db) })
+            articleAudit(db, a, 'article.update', { ...(live && { reason }), ...diff })
+            return articleDetail(db, a)
+          },
+          { admin: 'articles' },
+        ),
+        publish: call(
+          'admin.articles.publish',
+          (db, id, { reason, expectedVersion }) => {
+            db.articles ??= articlesOf(db)
+            const a = findArticle(db, id)
+            requireReason(reason)
+            checkRev(a, expectedVersion)
+            if (a.status !== 'draft') fail('INVALID_STATE_TRANSITION', 'Hanya draft yang bisa diterbitkan.', 409)
+            failOnFields(articleIssues(db, a, true), 'Lengkapi artikel sebelum diterbitkan.')
+            Object.assign(a, { status: 'published', rev: a.rev + 1, updatedAt: nowIso(db) })
+            articleAudit(db, a, 'article.publish', { reason, before: { status: 'draft' }, after: { status: 'published' } })
+            return articleDetail(db, a)
+          },
+          { admin: 'articles' },
+        ),
+        archive: call(
+          'admin.articles.archive',
+          (db, id, { reason, expectedVersion }) => {
+            db.articles ??= articlesOf(db)
+            const a = findArticle(db, id)
+            requireReason(reason)
+            checkRev(a, expectedVersion)
+            if (a.status === 'archived') fail('INVALID_STATE_TRANSITION', 'Artikel ini sudah diarsipkan.', 409)
+            const before = { status: a.status }
+            Object.assign(a, { status: 'archived', rev: a.rev + 1, updatedAt: nowIso(db) })
+            articleAudit(db, a, 'article.archive', { reason, before, after: { status: 'archived' } })
+            return articleDetail(db, a)
+          },
+          { admin: 'articles' },
+        ),
+      },
+      applications: {
+        list: call('admin.applications.list', adminApplications, { admin: true }),
+        get: call(
+          'admin.applications.get',
+          (db, id) => {
+            const { owner, app } = findUserApp(db, id)
+            return applicationDetail(db, owner, app)
+          },
+          { admin: true },
+        ),
+        transition: call(
+          'admin.applications.transition',
+          (db, id, { toStatus, reason, expectedVersion, metadata }) => {
+            const { owner, app } = findUserApp(db, id)
+            requireReason(reason)
+            checkVersion(app, expectedVersion)
+            const from = app.status
+            transitionApplication(db, owner, app, { toStatus, metadata })
+            audit(db, { action: 'application.transition', resource: { type: 'application', id, label: owner.user.name }, reason, before: { status: from }, after: { status: toStatus } })
+            return applicationDetail(db, owner, app)
+          },
+          { admin: true },
+        ),
+        addNote: call(
+          'admin.applications.addNote',
+          (db, id, { text }) => {
+            const { owner, app } = findUserApp(db, id)
+            const note = String(text ?? '').trim()
+            if (note.length < 3) fail('VALIDATION_FAILED', 'Tulis catatan (minimal 3 karakter).', 400, { fieldErrors: [{ field: 'text', message: 'Tulis catatan (minimal 3 karakter).' }] })
+            ;(db.adminNotes ??= []).unshift({ id: nextId(db, 'note'), applicationId: id, text: note, author: { id: db.user.id, name: db.user.name }, createdAt: nowIso(db) })
+            audit(db, { action: 'application.note', resource: { type: 'application', id, label: owner.user.name }, after: { note } })
+            return applicationDetail(db, owner, app)
+          },
+          { admin: true },
+        ),
+      },
+      users: {
+        list: call(
+          'admin.users.list',
+          (db, { query = '', inProcess, hasActiveMortgage } = {}) => {
+            const q = query.trim().toLowerCase()
+            return userAccounts(db)
+              .filter((a) => !q || [a.user.name, a.user.contact, a.profile?.email, a.profile?.phone].some((s) => s?.toLowerCase().includes(q)))
+              .map(userRow)
+              .filter((r) => inProcess === undefined || IN_PROCESS.includes(r.activeApplicationStatus) === inProcess)
+              .filter((r) => hasActiveMortgage === undefined || r.hasActiveMortgage === hasActiveMortgage)
+              .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          },
+          { admin: true },
+        ),
+        get: call('admin.users.get', (db, id) => userDetail(db, findAccount(db, id)), { admin: true }),
+        // The login contact is the OTP identity and never changes here; the NIK is only replaced, never read back.
+        updateProfile: call(
+          'admin.users.updateProfile',
+          (db, id, { values, reason, expectedVersion }) => {
+            const a = findAccount(db, id)
+            requireReason(reason)
+            checkVersion(a.user, expectedVersion)
+            const next = { ...a.profile, ...pickFields(values, PROFILE_FIELDS) }
+            failOnFields(filledOnly({ ...validatePersonal(next, { today: db.clock }), ...validateEmploymentBasic(next) }, next, ['fullName']), 'Periksa kembali data profil.')
+            const diff = changes(a.profile, next, PROFILE_FIELDS)
+            if (!diff) fail('VALIDATION_FAILED', 'Tidak ada perubahan untuk disimpan.', 400)
+            a.profile = next
+            bumpVersion(a.user)
+            audit(db, { action: 'user.profile.update', resource: { type: 'user', id, label: a.user.name }, reason, ...diff })
+            return userDetail(db, a)
+          },
+          { admin: true },
+        ),
+        updateFinance: call(
+          'admin.users.updateFinance',
+          (db, id, { values, reason, expectedVersion }) => {
+            const a = findAccount(db, id)
+            requireReason(reason)
+            checkVersion(a.user, expectedVersion)
+            const finance = pickFields(values, FINANCE_FIELDS)
+            const errors = {}
+            for (const k of FINANCE_FIELDS.filter((x) => x !== 'jointIncome')) {
+              if (finance[k] != null && !(Number.isInteger(finance[k]) && finance[k] >= 0)) errors[k] = 'Isi angka Rupiah 0 atau lebih.'
+            }
+            if ('monthlyIncome' in finance && !(finance.monthlyIncome > 0)) errors.monthlyIncome = 'Penghasilan bulanan harus lebih dari 0.'
+            failOnFields(errors, 'Periksa kembali data keuangan.')
+            const diff = changes(a.finance, { ...a.finance, ...finance }, FINANCE_FIELDS)
+            if (!diff) fail('VALIDATION_FAILED', 'Tidak ada perubahan untuk disimpan.', 400)
+            applyFinance(a, finance)
+            bumpVersion(a.user)
+            audit(db, { action: 'user.finance.update', resource: { type: 'user', id, label: a.user.name }, reason, ...diff })
+            // DTI always moves with income/debts; KPR Health only where a mortgage carries the copy.
+            const health = a.mortgages.some((m) => m.status === 'draft' || m.status === 'active')
+            return { ...userDetail(db, a), recalculated: ['dti', ...(health ? ['health'] : [])] }
+          },
+          { admin: true },
+        ),
+      },
+    },
   }
 }
 
@@ -937,42 +1950,35 @@ export const mockControls = {
     saveDb(db)
   },
   failNext: (name, error = { code: 'SERVICE_UNAVAILABLE', message: 'Koneksi bermasalah. Periksa koneksi lalu coba lagi.', status: 503, retryable: true }) => failures.set(name, error),
+  // Tracker demo buttons: the admin's transition helper applied to the signed-in user's application.
   advanceApplication(id) {
     const db = loadDb()
     const app = findApp(db, id)
-    const flow = app.productType === 'takeover' ? TAKEOVER_FLOW : PRIMARY_FLOW
-    const at = flow.indexOf(app.status === 'additional_docs_requested' ? 'docs_verification' : app.status)
-    if (at < 0 || at === flow.length - 1) return
-    const next = flow[at + 1]
-    app.status = next
-    app.pendingActions = []
-    app.statusHistory.push({ status: next, at: nowIso(db) })
-    const [title, body] = STATUS_COPY[next]
-    pushActivity(db, { type: 'application_status_changed', category: 'application', title, body, action: { label: 'Lihat status', route: '/my-kpr/application' } })
-    if (next === 'disbursed') completeApplication(db, app)
-    touch(db, app)
+    if (app.status === 'additional_docs_requested') {
+      // The bank takes the documents as they are.
+      app.status = 'docs_verification'
+      app.pendingActions = []
+    }
+    const next = allowedTransitions(app).find((s) => s !== 'rejected' && s !== 'additional_docs_requested')
+    if (!next) return
+    const s = app.selection ?? {}
+    const finalTerms = { loanAmount: s.loanAmount, tenorMonths: s.tenorMonths, fixedRateBps: s.fixedRateBps, fixedMonths: s.fixedMonths, floatingRateBps: s.floatingRateBps, akadDate: db.clock }
+    transitionApplication(db, db, app, { toStatus: next, metadata: next === 'akad' ? { finalTerms } : {} })
     saveDb(db)
   },
   rejectApplication(id) {
     const db = loadDb()
     const app = findApp(db, id)
-    if (!IN_PROCESS.includes(app.status)) return
-    app.status = 'rejected'
-    app.rejection = { code: 'DTI_ABOVE_BANK_POLICY', displayReason: `Rasio cicilan melebihi kebijakan ${app.selection?.bankName ?? 'bank'}.`, relevantStep: app.productType === 'primary' ? 2 : 3, rejectedAt: nowIso(db) }
-    app.statusHistory.push({ status: 'rejected', at: nowIso(db) })
-    pushActivity(db, { type: 'application_rejected', category: 'application', title: `Pengajuan ke ${app.selection?.bankName} belum disetujui`, body: app.rejection.displayReason, action: { label: 'Lihat pilihan', route: '/my-kpr/application' } })
+    if (!allowedTransitions(app).includes('rejected')) return
+    transitionApplication(db, db, app, { toStatus: 'rejected', metadata: { code: 'DTI_ABOVE_BANK_POLICY', displayReason: `Rasio cicilan melebihi kebijakan ${app.selection?.bankName ?? 'bank'}.` } })
     saveDb(db)
   },
   requestDocument(id, documentType = 'bank_statement') {
     const db = loadDb()
     const app = findApp(db, id)
-    if (!IN_PROCESS.includes(app.status)) return
+    if (!allowedTransitions(app).includes('additional_docs_requested')) return
     const type = app.documents[documentType] ? documentType : Object.keys(app.documents)[0]
-    app.documents[type] = { ...app.documents[type], status: 'needs_update', invalidReason: 'Bank meminta versi terbaru.' }
-    app.pendingActions.push({ id: nextId(db, 'pa'), type: 'document_update', documentType: type, message: `${DOC_LABELS[type]} terbaru dibutuhkan bank.`, requestedAt: nowIso(db) })
-    app.status = 'additional_docs_requested'
-    app.statusHistory.push({ status: 'additional_docs_requested', at: nowIso(db) })
-    pushActivity(db, { type: 'additional_document_requested', category: 'application', title: 'Bank minta dokumen tambahan', body: `${DOC_LABELS[type]} terbaru dibutuhkan.`, action: { label: 'Upload sekarang', route: '/my-kpr/application' } })
+    transitionApplication(db, db, app, { toStatus: 'additional_docs_requested', metadata: { documentTypes: [type], message: `${DOC_LABELS[type]} terbaru dibutuhkan bank.` } })
     saveDb(db)
   },
 }

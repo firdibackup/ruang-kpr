@@ -880,6 +880,8 @@ Composite score MVP:
 
 Health bukan credit score bank. Formula/weight harus configurable dan didokumentasikan sebelum production. Jika input komponen tidak lengkap, tampilkan partial score, bukan angka presisi palsu.
 
+Status (2026-10-07): formula berversi. Versi 1 = ambang di `src/domains/mortgages/derive.js` (`HEALTH_V1`). Perubahan ambang, bobot, dan label dilakukan dari admin Configuration → Formula KPR Health, dengan pratinjau dan alasan, lalu terbit sebagai versi baru. Versi lama tidak pernah diubah dan bisa dipulihkan. Halaman KPR Health menampilkan versi yang dipakai.
+
 ## 11.3 Next Payment
 
 - Amount

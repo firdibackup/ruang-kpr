@@ -70,11 +70,11 @@ function Header({ sim, title, subtitle, back }) {
 }
 
 // Phase 2 milestone (application flow only): the now-complete KPR Health score + one teaser from the simulation.
-function PhaseTwoBanner({ sim, app, clock }) {
-  const h = applicationHealth(app.data, clock, app.data.property?.estimatedValue ?? null)
+function PhaseTwoBanner({ sim, app, clock, healthConfig }) {
+  const h = applicationHealth(app.data, clock, app.data.property?.estimatedValue ?? null, healthConfig)
   const weakest = h.components.filter((x) => x.score !== null).sort((a, b) => a.score - b.score)[0]
   // Same sentence logic as the Properti step's HealthAside.
-  const sentence = h.score >= 80 ? 'Kondisi KPR kamu sehat.' : weakest?.key === 'rate' && h.rate.mode === 'floating' ? 'Bunga kamu sudah floating.' : HEALTH_SENTENCE[weakest?.key]
+  const sentence = h.tone === 'ok' ? 'Kondisi KPR kamu sehat.' : weakest?.key === 'rate' && h.rate.mode === 'floating' ? 'Bunga kamu sudah floating.' : HEALTH_SENTENCE[weakest?.key]
   return (
     <section aria-labelledby="phase2-title" className="flex flex-col gap-4 rounded-card bg-card p-6 shadow-card sm:flex-row sm:items-center sm:p-7">
       <HealthRing health={h} size={88} />
@@ -105,7 +105,7 @@ export function BaselinePage() {
   return (
     <>
       <Header sim={sim} title="Kondisi KPR kamu" subtitle="Pembanding sebelum melihat program bank baru." back={back} />
-      {sim.source.type === 'application' && app && <PhaseTwoBanner sim={sim} app={app} clock={snap.clock} />}
+      {sim.source.type === 'application' && app && <PhaseTwoBanner sim={sim} app={app} clock={snap.clock} healthConfig={snap.config.health} />}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="gap-5 sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">

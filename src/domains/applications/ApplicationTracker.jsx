@@ -485,6 +485,7 @@ function Tracker({ app, snap, onChange, reload }) {
                     readOnly={app.documents[d.type]?.status !== "needs_update"}
                     compact
                     onUpload={upload(d.type)}
+                    rules={snap.config.upload}
                   />
                 ))}
             </div>
@@ -640,35 +641,31 @@ function DemoControls({ app, reload }) {
             Majukan ke: {STATUS_LABEL[flow[at + 1]]}
           </button>
         )}
-        {[
-          "submitted",
-          "docs_verification",
-          "bank_processing",
-          "appraisal",
-        ].includes(app.status) && (
-          <>
-            <button
-              type="button"
-              onClick={act(mockControls.rejectApplication)}
-              className="h-10 rounded-full border border-foreground px-3.5 text-xs font-bold"
-            >
-              Simulasikan ditolak
-            </button>
-            <button
-              type="button"
-              onClick={act((id) =>
-                mockControls.requestDocument(
-                  id,
-                  app.productType === "primary"
-                    ? "income_proof"
-                    : "bank_statement",
-                ),
-              )}
-              className="h-10 rounded-full border border-foreground px-3.5 text-xs font-bold"
-            >
-              Minta dokumen tambahan
-            </button>
-          </>
+        {/* Same status matrix as the admin (doc 04 §9.1): rejection from the bank stages, revisions while verifying. */}
+        {["bank_processing", "appraisal"].includes(app.status) && (
+          <button
+            type="button"
+            onClick={act(mockControls.rejectApplication)}
+            className="h-10 rounded-full border border-foreground px-3.5 text-xs font-bold"
+          >
+            Simulasikan ditolak
+          </button>
+        )}
+        {app.status === "docs_verification" && (
+          <button
+            type="button"
+            onClick={act((id) =>
+              mockControls.requestDocument(
+                id,
+                app.productType === "primary"
+                  ? "income_proof"
+                  : "bank_statement",
+              ),
+            )}
+            className="h-10 rounded-full border border-foreground px-3.5 text-xs font-bold"
+          >
+            Minta dokumen tambahan
+          </button>
         )}
       </div>
       <Link to="/activity" className="text-xs font-bold text-primary underline">

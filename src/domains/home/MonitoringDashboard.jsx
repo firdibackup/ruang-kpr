@@ -283,6 +283,7 @@ export function MonitoringDashboard({
           initialDue={pay?.due ?? d.nextDue}
           clock={clock}
           onDone={onChanged}
+          uploadRules={snap.config.upload}
         />
       )}
 

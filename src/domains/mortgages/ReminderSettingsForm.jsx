@@ -55,13 +55,13 @@ export function ReminderSettingsForm({ value, onChange, dueDay, isFixed, fixedUn
   const channel = (k) => (on) => onChange({ ...value, channels: { ...value.channels, [k]: on } })
   return (
     <div className="flex flex-col gap-4">
-      <Group title="Pembayaran bulanan" sub={`Jatuh tempo setiap tanggal ${dueDay}${dueDay > 28 ? ' (di bulan tanpa tanggal itu, jatuh pada hari terakhir bulan)' : ''}`} error={errors.payment}>
+      <Group title="Pembayaran bulanan" sub={dueDay && `Jatuh tempo setiap tanggal ${dueDay}${dueDay > 28 ? ' (di bulan tanpa tanggal itu, jatuh pada hari terakhir bulan)' : ''}`} error={errors.payment}>
         {PAYMENT.map(([n, label]) => (
           <Chip key={n} label={label} checked={value.payment.includes(n)} onChange={toggle('payment', n)} />
         ))}
       </Group>
       {isFixed ? (
-        <Group title="Masa fixed berakhir" sub={dateLong(fixedUntil)}>
+        <Group title="Masa fixed berakhir" sub={fixedUntil && dateLong(fixedUntil)}>
           {FIXED.map((n) => (
             <Chip key={n} label={`H-${n}`} checked={value.fixedExpiry.includes(n)} onChange={toggle('fixedExpiry', n)} />
           ))}

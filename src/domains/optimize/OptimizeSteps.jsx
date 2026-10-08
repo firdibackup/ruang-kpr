@@ -25,6 +25,7 @@ import {
   WalletIcon,
 } from "lucide-react";
 import { api } from "@/data/api";
+import { uploadHint } from "@/data/documentRules";
 import { calculateTopupScenario } from "@/calculations/finance";
 import { useForm } from "@/lib/hooks";
 import {
@@ -197,7 +198,7 @@ export function OptimizeStepPage({ employment = false }) {
           gap ? { state: { from: "gaps" } } : {},
         )
       : navigate(fromReview ? "/optimize/7" : to, opts);
-  const props = { app, clock: snap.clock, setApp, next, navigate, fromReview };
+  const props = { app, clock: snap.clock, config: snap.config, setApp, next, navigate, fromReview };
   const PN = modeName(app.optimizationMode);
   const back = {
     1: employment ? "/optimize/1" : "/optimize/intro",
@@ -1147,12 +1148,9 @@ function GoalStep({ app, clock, setApp, navigate, fromReview }) {
   );
 }
 
-const scoreTone = (s) =>
-  s == null ? "mute" : s >= 80 ? "ok" : s >= 60 ? "warn" : "bad";
-
 // KPR Health from the data entered so far; LTV follows the property value as it is typed.
 function HealthAside({ health: h, note, sticky }) {
-  const tone = (key) => scoreTone(h.components.find((x) => x.key === key).score);
+  const tone = (key) => h.components.find((x) => x.key === key).tone;
   const weakest = h.components
     .filter((x) => x.score !== null)
     .sort((a, b) => a.score - b.score)[0];
@@ -1193,7 +1191,7 @@ function HealthAside({ health: h, note, sticky }) {
             {h.partial ? " · parsial" : ""}
           </Chip>
           <p className="text-[13px] leading-5 font-semibold text-ink-2">
-            {h.score >= 80
+            {h.tone === "ok"
               ? "Kondisi KPR kamu sehat."
               : weakest?.key === "rate" && r.mode === "floating"
                 ? "Bunga kamu sudah floating."
@@ -1206,7 +1204,7 @@ function HealthAside({ health: h, note, sticky }) {
 }
 
 // ---------- Step 4 ----------
-function PropertyStep({ app, clock, setApp, next }) {
+function PropertyStep({ app, clock, config, setApp, next }) {
   const p = app.data.property ?? {};
   const mode = app.optimizationMode;
   const validate = useCallback(
@@ -1275,7 +1273,7 @@ function PropertyStep({ app, clock, setApp, next }) {
     });
   const health = (
     <HealthAside
-      health={applicationHealth(app.data, clock, value)}
+      health={applicationHealth(app.data, clock, value, config.health)}
       sticky={mode !== "topup"}
       note={`${mode === "topup" ? "" : "Take Over umumnya butuh LTV maksimal 70–80%. "}Skor ini bukan skor kredit dan tidak menentukan persetujuan bank.`}
     />
@@ -1426,7 +1424,7 @@ const GROUPS = [
   ["topup", "DANA TAMBAHAN", HandCoinsIcon],
 ];
 
-function TakeoverDocsStep({ app, setApp, next, fromReview }) {
+function TakeoverDocsStep({ app, config, setApp, next, fromReview }) {
   const [demo, setDemo] = useState(false);
   const [saving, setSaving] = useState(false);
   const required = app.requiredDocuments.filter((d) => d.required);
@@ -1484,6 +1482,7 @@ function TakeoverDocsStep({ app, setApp, next, fromReview }) {
                   state={app.documents[d.type]}
                   onUpload={upload(d.type)}
                   compact
+                  rules={config.upload}
                 />
               ))}
             </Panel>
@@ -1507,7 +1506,7 @@ function TakeoverDocsStep({ app, setApp, next, fromReview }) {
         />
         <p className="text-[13px] leading-5 text-ink-3">
           Dokumen KPR lama dan properti diperlukan untuk Take Over, berbeda dari
-          KPR baru. JPG, PNG, PDF · maks 5MB. Setiap file tersimpan otomatis.
+          KPR baru. {uploadHint(config.upload)}. Setiap file tersimpan otomatis.
         </p>
         {import.meta.env.DEV && !complete && (
           <button

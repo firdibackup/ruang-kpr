@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { toast } from 'sonner'
 import { BriefcaseIcon, FileTextIcon, HandCoinsIcon, HouseIcon, LandmarkIcon, PencilIcon, UserIcon } from 'lucide-react'
 import { api } from '@/data/api'
+import { uploadHint } from '@/data/documentRules'
 import { useResource } from '@/lib/hooks'
 import { dateLong, labelOf, percentBps, percentRatio, rupiah, tenorLabel, GENDERS, MARITAL, OCCUPATIONS, PROPERTY_TYPES } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -78,7 +79,7 @@ export function PrimaryWizard() {
           go={go}
         />
       )}
-      {!milestone && n === 5 && <DocumentsStep app={primary} onChange={setApp} fromReview={fromReview} go={go} />}
+      {!milestone && n === 5 && <DocumentsStep app={primary} onChange={setApp} fromReview={fromReview} go={go} uploadRules={snap.config.upload} />}
       {n === 6 && !productId && <PrimaryCompareStep app={primary} go={go} fromReview={fromReview} />}
       {n === 6 && productId && <PrimaryProgramDetail app={primary} productId={productId} onSaved={setApp} go={go} />}
       {n === 7 && <ReviewStep app={primary} go={go} />}
@@ -121,7 +122,7 @@ function OtherDraftNotice({ app, onDeleted }) {
   )
 }
 
-export function DocumentsStep({ app, onChange, fromReview, go, nextPath = '/apply/primary/6', backPath = '/apply/primary/4' }) {
+export function DocumentsStep({ app, onChange, fromReview, go, uploadRules, nextPath = '/apply/primary/6', backPath = '/apply/primary/4' }) {
   const [uploading, setUploading] = useState(0)
   const [demoPending, setDemoPending] = useState(false)
   const docs = app.requiredDocuments
@@ -178,7 +179,7 @@ export function DocumentsStep({ app, onChange, fromReview, go, nextPath = '/appl
           </div>
           <div className="flex flex-col gap-3">
             {docs.map((d) => (
-              <UploadRow key={d.type} doc={d} state={app.documents[d.type]} onUpload={upload(d.type)} />
+              <UploadRow key={d.type} doc={d} state={app.documents[d.type]} onUpload={upload(d.type)} rules={uploadRules} />
             ))}
           </div>
         </Panel>
@@ -202,7 +203,7 @@ export function DocumentsStep({ app, onChange, fromReview, go, nextPath = '/appl
           {done} <span className="text-base text-muted-foreground">dari {required.length} terunggah</span>
         </span>
         <ProgressBar value={(done / Math.max(1, required.length)) * 100} label="Dokumen wajib terunggah" barClassName="bg-success-strong" />
-        <p className="text-[13px] leading-5 text-ink-3">JPG, PNG, atau PDF · maks 5MB per file. File tersimpan otomatis begitu dipilih.</p>
+        <p className="text-[13px] leading-5 text-ink-3">{uploadHint(uploadRules)} per file. File tersimpan otomatis begitu dipilih.</p>
         {import.meta.env.DEV && !complete && (
           <button type="button" onClick={fillDemo} disabled={demoPending} className="w-fit text-[13px] font-bold text-primary underline">
             {demoPending ? 'Mengisi…' : 'Isi contoh'}

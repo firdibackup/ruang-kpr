@@ -5,7 +5,6 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { CheckIcon, LockIcon, PencilIcon } from 'lucide-react'
 import { PiCalculatorFill, PiEqualsFill, PiTrendDownFill, PiTrendUpFill } from 'react-icons/pi'
 import { api } from '@/data/api'
-import { DEFAULT_REMINDERS } from '@/data/seed'
 import { calculateMaxPrincipal } from '@/calculations/finance'
 import { useForm, useResource } from '@/lib/hooks'
 import { BANKS, bpsInput, dateShort, intInput, moneyInput, percentBps, rupiah, rupiahShort, tenorLabel, toBps, toInt, toMoney } from '@/lib/format'
@@ -71,7 +70,7 @@ export function MortgageSetupWizard() {
     toast(edit ? 'Perubahan tersimpan.' : 'Tersimpan.')
     navigate(returnTo ?? `/monitoring/setup/${n + 1}`)
   }
-  const common = { m, clock: snap.clock, onSaved, editing: !!edit, backTo, navigate }
+  const common = { m, clock: snap.clock, reminderDefaults: snap.config.reminders, onSaved, editing: !!edit, backTo, navigate }
 
   return (
     <>
@@ -339,10 +338,10 @@ function LoanStep({ m, clock, onSaved, editing, backTo, navigate }) {
 }
 
 // ---------- Step 2 · Reminder & aktivasi ----------
-function ReminderStep({ m, clock, navigate }) {
+function ReminderStep({ m, clock, reminderDefaults, navigate }) {
   const isFixed = m.currentRateType === 'fixed' && !!m.fixedUntil && m.fixedUntil > clock
   const [reminders, setReminders] = useState(() => {
-    const r = structuredClone(m.reminders ?? DEFAULT_REMINDERS)
+    const r = structuredClone(m.reminders ?? reminderDefaults)
     return isFixed ? r : { ...r, fixedExpiry: [] }
   })
   const [agree, setAgree] = useState(false)

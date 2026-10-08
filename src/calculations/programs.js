@@ -13,7 +13,7 @@ import {
 } from './finance'
 
 export const isStale = (product, asOf) => daysUntil({ fromDate: product.lastVerifiedAt, targetDate: asOf }) > STALE_AFTER_DAYS
-export const isAvailable = (product, asOf) => product.active && product.effectiveFrom <= asOf && asOf <= product.effectiveUntil
+export const isAvailable = (product, asOf) => product.status === 'published' && product.effectiveFrom <= asOf && asOf <= product.effectiveUntil
 
 export function ageOn(birthDate, date) {
   const b = parseIsoDate(birthDate)
