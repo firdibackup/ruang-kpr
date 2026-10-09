@@ -410,8 +410,9 @@ describe('primary application', () => {
     expect(await api.bankProducts.affordability({ applicationId: app.id })).toMatchObject({ openCount: 3, capacity: { remainingCapacity: 3_750_000 } })
     await expectCode(api.applications.submit(app.id, { consents: { dataAccuracy: true, sendToBank: true } }), 'DOCUMENTS_INCOMPLETE')
     for (const t of ['ktp', 'npwp', 'income_proof', 'property_document']) await api.applications.uploadDocument(app.id, { documentType: t, file: file(`${t}.jpg`) })
-    // File rules are temporarily off (ENFORCE_FILE_RULES): any type/size is accepted.
-    expect((await api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.heic', 6 * 1024 * 1024) })).documents.additional.status).toBe('uploaded')
+    // Upload rules are on, with the limits from admin configuration (default: JPG/PNG/PDF, 5MB).
+    await expectCode(api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.heic') }), 'FILE_TYPE_UNSUPPORTED')
+    await expectCode(api.applications.uploadDocument(app.id, { documentType: 'additional', file: file('a.pdf', 6 * 1024 * 1024) }), 'FILE_TOO_LARGE')
     const compare = await api.bankProducts.compare({ applicationId: app.id })
     expect(JSON.stringify(compare)).not.toMatch(/secondary/i)
     const chosen = compare.items[0]
@@ -838,13 +839,30 @@ describe('admin audit log', () => {
     await api.admin.users.updateProfile('usr_sample_01', { values: { nik: '3174012345678901' }, reason: 'Koreksi sesuai KTP', expectedVersion: 1 })
     const { config } = await api.admin.config.get()
     await api.admin.config.update('upload', { values: { maxFileMb: 4, formats: ['jpg', 'png', 'pdf'] }, reason: 'Batas bank mitra', expectedVersion: config.version })
-    const all = await api.admin.audit.list()
+    const all = (await api.admin.audit.list()).items
     expect(all.map((e) => e.action)).toEqual(['config.update', 'user.profile.update'])
     expect(all[0]).toMatchObject({ resource: { type: 'config', id: 'upload' }, before: { maxFileMb: 5 }, after: { maxFileMb: 4 }, requestId: expect.any(String) })
-    expect((await api.admin.audit.list({ resourceType: 'user' })).map((e) => e.resource.id)).toEqual(['usr_sample_01'])
-    expect(await api.admin.audit.list({ query: 'bank mitra' })).toHaveLength(1)
-    expect(await api.admin.audit.list({ from: '2026-10-01' })).toEqual([])
+    expect((await api.admin.audit.list({ resourceType: 'user' })).items.map((e) => e.resource.id)).toEqual(['usr_sample_01'])
+    expect((await api.admin.audit.list({ query: 'bank mitra' })).items).toHaveLength(1)
+    expect((await api.admin.audit.list({ from: '2026-10-01' })).items).toEqual([])
     expect(JSON.stringify(all)).not.toContain('3174012345678901')
+  })
+
+  it('with two super admins, each change is recorded under who made it and the log filters by admin', async () => {
+    mockControls.reset('admin_ops')
+    const { config } = await api.admin.config.get()
+    await api.admin.config.update('upload', { values: { maxFileMb: 4, formats: ['jpg', 'png', 'pdf'] }, reason: 'Batas bank mitra', expectedVersion: config.version })
+    await signIn('Sinta Maharani', 'sinta@ruangkpr.id')
+    expect(await api.auth.getSession()).toMatchObject({ role: 'super_admin' })
+    // Sinta still holds the version she opened before Admin RuangKPR saved: her save must not overwrite it.
+    await expectCode(api.admin.config.update('upload', { values: { maxFileMb: 3, formats: ['jpg'] }, reason: 'Hemat penyimpanan', expectedVersion: config.version }), 'CONFLICT_VERSION')
+    await api.admin.config.update('upload', { values: { maxFileMb: 3, formats: ['jpg'] }, reason: 'Hemat penyimpanan', expectedVersion: config.version + 1 })
+    const log = await api.admin.audit.list()
+    expect(log.items.map((e) => [e.actor.name, e.reason])).toEqual([['Sinta Maharani', 'Hemat penyimpanan'], ['Admin RuangKPR', 'Batas bank mitra']])
+    expect(log.actors).toEqual([{ id: 'usr_admin_01', name: 'Admin RuangKPR' }, { id: 'usr_admin_02', name: 'Sinta Maharani' }])
+    const bySinta = await api.admin.audit.list({ actorId: 'usr_admin_02' })
+    expect(bySinta.items.map((e) => e.after)).toEqual([{ maxFileMb: 3, formats: ['jpg'] }])
+    expect(bySinta.actors).toHaveLength(2) // the filter list stays whole while one admin is picked
   })
 })
 

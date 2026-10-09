@@ -1655,7 +1655,7 @@ Layar, matrix transisi, dan fase ada di `2026-10-07_110428-admin-dashboard.md`. 
 ### 28.1 Role dan akses
 
 - Role melekat pada akun: `user | super_admin | content_writer`. `GET /auth/session` mengembalikan `role`, `null` bila belum login.
-- Staff login lewat alur OTP yang sama (§7). Fixture mock: `admin@ruangkpr.id` (super admin) dan `penulis@ruangkpr.id` (content writer), OTP `148260`.
+- Staff login lewat alur OTP yang sama (§7). Fixture mock: `admin@ruangkpr.id` dan `sinta@ruangkpr.id` (super admin), `penulis@ruangkpr.id` (content writer), OTP `148260`.
 - Semua `/admin/*` butuh session (`401 AUTH_REQUIRED`) dan role staff yang memegang modulnya (`403 FORBIDDEN`, tanpa membocorkan resource): `super_admin` semua modul, `content_writer` hanya `/admin/articles*`.
 - Setiap mutation admin wajib `reason` dan `expected_version` (§3.6; mismatch → `409 CONFLICT_VERSION`) serta menulis audit event (§28.5).
 
@@ -1681,7 +1681,7 @@ Layar, matrix transisi, dan fase ada di `2026-10-07_110428-admin-dashboard.md`. 
 | GET | `/admin/reports/export.csv?…` (filter sama) | `admin.reports.exportCsv` → `{ filename, csv, rows }` | ada |
 | GET/PATCH | `/admin/configuration`, `/admin/configuration/{reminders\|upload}` | `admin.config.get/update(section)` | ada |
 | GET/POST | `/admin/health-config`, `…/preview`, `…/publish`, `…/rollback` | `admin.health.get/preview/publish/rollback` | ada |
-| GET | `/admin/audit-logs?resource_type=&from=&to=&query=` | `admin.audit.list` (super admin) | ada |
+| GET | `/admin/audit-logs?resource_type=&actor_id=&from=&to=&query=` | `admin.audit.list` (super admin) → `{ items, actors }` | ada |
 
 ### 28.3 Admin user row
 
@@ -1747,7 +1747,7 @@ Akad menyimpan `final_terms` `{ loan_amount, tenor_months, fixed_rate_bps, fixed
 }
 ```
 
-Nilai sensitif (NIK, nomor rekening, token) dimasking di `before`/`after`. Append-only; tidak ada endpoint ubah atau hapus. `GET /admin/audit-logs` mengembalikan event terbaru di atas; filter `resource_type`, rentang tanggal `occurred_at`, dan `query` (alasan, label resource, nama admin). Backend memakai cursor; mock mengembalikan semua.
+Nilai sensitif (NIK, nomor rekening, token) dimasking di `before`/`after`. Append-only; tidak ada endpoint ubah atau hapus. `GET /admin/audit-logs` mengembalikan event terbaru di atas; filter `resource_type`, `actor_id`, rentang tanggal `occurred_at`, dan `query` (alasan, label resource, nama admin). `actors` = semua admin yang pernah tercatat (untuk pilihan filter, tidak ikut terfilter). Backend memakai cursor; mock mengembalikan semua.
 
 ### 28.6 Akun di mock
 

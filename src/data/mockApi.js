@@ -1611,15 +1611,20 @@ export function createMockApi({ latencyMs = 300 } = {}) {
       audit: {
         list: call(
           'admin.audit.list',
-          (db, { resourceType, from, to, query = '' } = {}) => {
+          (db, { resourceType, actorId, from, to, query = '' } = {}) => {
             const q = query.trim().toLowerCase()
-            return (db.auditLog ?? []).filter(
+            const log = db.auditLog ?? []
+            const items = log.filter(
               (e) =>
                 (!resourceType || e.resource.type === resourceType) &&
+                (!actorId || e.actor.id === actorId) &&
                 (!from || e.occurredAt.slice(0, 10) >= from) &&
                 (!to || e.occurredAt.slice(0, 10) <= to) &&
                 (!q || [e.reason, e.resource.label, e.actor.name].some((s) => s?.toLowerCase().includes(q))),
             )
+            // Everyone who appears in the whole log, for the "Oleh admin" filter (it stays whole while filtering).
+            const actors = [...new Map(log.map((e) => [e.actor.id, { id: e.actor.id, name: e.actor.name }])).values()].sort((a, b) => a.name.localeCompare(b.name))
+            return { items, actors }
           },
           { admin: true },
         ),

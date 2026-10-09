@@ -112,7 +112,9 @@ export function HomePage() {
   const home = selectHomeState(snap, snap.clock);
   const app = home.application;
   const active = home.activeMortgage;
-  const derived = active ? deriveMortgage(active, snap.clock, snap.config.health) : null;
+  const derived = active
+    ? deriveMortgage(active, snap.clock, snap.config.health)
+    : null;
   const subtitle = SUBTITLE[home.state] ?? "Ini kondisi KPR kamu hari ini.";
   const board = active && !app;
   const emptyBoard = snap.dashboardLayout?.length === 0;
@@ -276,12 +278,12 @@ function FreshProducts() {
       icon: "refinancing",
       go: () => navigate("/optimize/intro?mode=topup"),
     },
-    {
-      name: "Multiguna",
-      desc: "Dana tunai dengan jaminan rumah.",
-      icon: "multiguna",
-      go: () => setMultiguna(true),
-    },
+    // {
+    //   name: "Multiguna",
+    //   desc: "Dana tunai dengan jaminan rumah.",
+    //   icon: "multiguna",
+    //   go: () => setMultiguna(true),
+    // },
   ];
   return (
     <HeroCard scenery="top" className="gap-[22px]">

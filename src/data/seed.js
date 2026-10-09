@@ -392,10 +392,12 @@ export const newAccount = (user = null) => ({ user, profile: {}, finance: {}, ap
 
 // Staff sign in through the same register + OTP flow with these emails (roles in roles.js).
 const ADMIN = { id: 'usr_admin_01', name: 'Admin RuangKPR', contact: 'admin@ruangkpr.id', contactType: 'email', role: 'super_admin', createdAt: '2026-09-01T02:00:00.000Z' }
+// A second super admin, so the audit log can be tried with more than one admin.
+const ADMIN_2 = { id: 'usr_admin_02', name: 'Sinta Maharani', contact: 'sinta@ruangkpr.id', contactType: 'email', role: 'super_admin', createdAt: '2026-09-01T02:00:00.000Z' }
 const WRITER = { id: 'usr_writer_01', name: 'Penulis Konten', contact: 'penulis@ruangkpr.id', contactType: 'email', role: 'content_writer', createdAt: '2026-09-01T02:00:00.000Z' }
 // A staff contact signing in for the first time in this browser gets its staff account, not a user account.
 export function staffAccount(contact) {
-  const staff = [ADMIN, WRITER].find((s) => s.contact === contact)
+  const staff = [ADMIN, ADMIN_2, WRITER].find((s) => s.contact === contact)
   return staff ? newAccount({ ...staff }) : null
 }
 
