@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
 import { Navigate, Outlet, RouterProvider, createBrowserRouter } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { api } from '@/data/api'
+import { PageSkeleton } from '@/components/shared/ui'
 import { AppShell } from '@/components/layout/AppShell'
 import { SessionProvider, useSession } from '@/domains/session/SessionProvider'
 import { STAFF } from '@/data/roles'
@@ -32,10 +35,28 @@ import { AuditLogPage } from '@/domains/admin/AuditLogPage'
 import { NotFoundPage } from './NotFoundPage'
 import { DevPanel } from './DevPanel'
 
+// TEMPORARY: the deployed demo has no Demo panel, so /admin signs anyone in as the seeded super admin instead of
+// answering 403. Set to false (or delete with AdminDemoSignIn) to bring the gate back. Dev and E2E keep the gate.
+const OPEN_ADMIN = import.meta.env.PROD
+
+function AdminDemoSignIn() {
+  const { refresh } = useSession()
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    api.auth
+      .register({ name: 'Admin RuangKPR', contact: 'admin@ruangkpr.id', acceptTerms: true, acceptPrivacy: true })
+      .then(() => api.auth.verifyOtp({ otp: '148260' }))
+      .then(refresh)
+      .catch(() => setFailed(true))
+  }, [refresh])
+  return failed ? <ForbiddenPage /> : <PageSkeleton />
+}
+
 // B2C pages send staff to their admin home (roles.js); /admin answers everyone else with a 403, never a silent
 // redirect. UX only: every admin operation checks the role again in the data layer.
 function RequireAuth({ admin = false }) {
   const { session } = useSession()
+  if (admin && OPEN_ADMIN && !STAFF[session.role]) return <AdminDemoSignIn />
   if (session.status === 'pending') return <Navigate to="/verify" replace />
   if (session.status !== 'authenticated') return <Navigate to="/register" replace />
   const home = STAFF[session.role]?.home
